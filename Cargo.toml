@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 tokio = { version = "1.49", features = ["full"] }
 
+url = "2.5"
+
 alloy = { version = "1.6", features = ["full"] }
 coins-bip32 = "0.13"
 anyhow = "1"
-#k256 = "0.14.0-rc.7"
