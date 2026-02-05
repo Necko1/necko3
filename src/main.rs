@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    listener::listen_on("https://polygon-rpc.com", addresses, |tx| {
+    listener::listen_on("https://polygon-bor-rpc.publicnode.com", addresses, |tx| {
         println!(r#"
         АЙЙЙ ЛЕВ АЙ ТИГР 🦁🐅🦁🐅🦁🐅🦁🐅
         НУ МОЛОДЕЦ! ГОРЖУСЬ, {to}!!!
