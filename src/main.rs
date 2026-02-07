@@ -4,12 +4,10 @@ mod model;
 
 use std::str::FromStr;
 use std::sync::Arc;
-use alloy::consensus::Transaction;
-use alloy::network::TransactionResponse;
-use alloy::primitives::Address;
+use alloy::primitives::{address, Address};
 use coins_bip32::prelude::*;
 use tokio::sync::{mpsc, RwLock};
-use crate::config::{ChainConfig, ChainType};
+use crate::config::{ChainConfig, ChainType, TokenConfig};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -20,6 +18,12 @@ async fn main() -> anyhow::Result<()> {
     let xpub = XPub::from_str(xpub_str)
         .expect("Invalid Xpub string");
 
+    let usdc_polygon = TokenConfig {
+        symbol: "USDC".to_string(),
+        contract: address!("0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"),
+        decimals: 6,
+    };
+
     let polygon_conf = Arc::new(ChainConfig {
         name: "Polygon Mainnet".to_owned(),
         rpc_url: "https://polygon-bor-rpc.publicnode.com".to_owned(),
@@ -27,6 +31,7 @@ async fn main() -> anyhow::Result<()> {
         native_symbol: "POL".to_owned(),
         decimals: 18,
         watch_addresses: RwLock::new(vec![]),
+        tokens: vec![usdc_polygon]
     });
 
     {

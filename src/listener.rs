@@ -2,15 +2,23 @@ use crate::config::ChainConfig;
 use crate::model::PaymentEvent;
 use alloy::consensus::Transaction;
 use alloy::network::TransactionResponse;
-use alloy::primitives::{Address, U256};
+use alloy::primitives::{Address, BlockNumber, U256};
 use alloy::providers::{Provider, ProviderBuilder};
-use alloy::rpc::types::Block;
 use alloy::rpc::types::Transaction as RpcTransaction;
+use alloy::rpc::types::{Block, Filter};
+use alloy::sol;
 use bigdecimal::{BigDecimal, FromPrimitive};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use url::Url;
+
+const LAG: u64 = 3;
+
+sol! {
+    #[derive(Debug)]
+    event Transfer(address indexed from, address indexed to, uint256 value);
+}
 
 fn format_units(amount: U256, decimals: u8) -> BigDecimal {
     let amount_str = amount.to_string();
@@ -36,6 +44,8 @@ pub async fn listen_on(
         }
     };
 
+    if last_block_num <= LAG { return Ok(()); } // better to be safe than sorry
+
     loop {
         let current_block_num = match provider.get_block_number().await {
             Ok(n) => n,
@@ -44,7 +54,7 @@ pub async fn listen_on(
                 tokio::time::sleep(Duration::from_secs(2)).await;
                 continue
             }
-        };
+        } - LAG;
 
         if current_block_num <= last_block_num {
             tokio::time::sleep(Duration::from_secs(2)).await;
@@ -66,7 +76,8 @@ pub async fn listen_on(
                     guard.clone()
                 };
 
-                let transactions = handle_new_block(&addresses, block).unwrap_or_default();
+                let transactions = process_block(&addresses, block)
+                    .unwrap_or_default();
                 for tx in transactions {
                     let amount_human = format_units(tx.value(), config.decimals);
 
@@ -74,8 +85,9 @@ pub async fn listen_on(
                         network: config.name.clone(),
                         tx_hash: tx.tx_hash(),
                         from: tx.from(),
-                        to: tx.to().unwrap_or_default(), // default is unreachable, but it's better to keep this instead of ::unwrap()
-                        token: config.native_symbol.clone(), // todo: usdc/usdt/other tokens
+                        to: tx.to().unwrap_or_default(), // default is unreachable, but it's better
+                                                         // to keep this instead of ::unwrap()
+                        token: config.native_symbol.clone(),
                         amount: amount_human,
                         amount_raw: tx.value(),
                     };
@@ -83,13 +95,17 @@ pub async fn listen_on(
                     let _ = sender.send(event).await;
                 }
             }
+
+            let config = config.clone();
+            let sender = sender.clone();
+            process_logs(config, block_num, &provider, sender).await;
         }
 
         last_block_num = current_block_num;
     }
 }
 
-fn handle_new_block(
+fn process_block(
     addresses: &[Address],
     block: Block,
 ) -> anyhow::Result<Vec<RpcTransaction>> {
@@ -104,4 +120,69 @@ fn handle_new_block(
         .collect();
 
     Ok(transactions)
+}
+
+async fn process_logs(
+    config: Arc<ChainConfig>,
+    block_number: BlockNumber,
+    provider: &impl Provider,
+    sender: mpsc::Sender<PaymentEvent>,
+) {
+    let token_addresses: Vec<Address> = config.tokens.iter()
+        .map(|t| t.contract)
+        .collect();
+
+    if token_addresses.is_empty() { return; }
+
+    let filter = Filter::new()
+        .from_block(block_number)
+        .to_block(block_number)
+        .address(token_addresses)
+        .event("Transfer(address,address,uint256)");
+
+    let logs = match provider.get_logs(&filter).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("failed to get logs from {}: {}. Retrying in 3s...", config.name, e);
+            tokio::time::sleep(Duration::from_secs(3)).await;
+            provider.get_logs(&filter).await.unwrap_or_default()
+        }
+    };
+
+    for log in logs {
+        if let Ok(transfer) = log.log_decode::<Transfer>() {
+            let event_data = transfer.inner;
+
+            let addresses = {
+                let guard = config.watch_addresses.read().await;
+                guard.clone()
+            };
+
+            if addresses.contains(&event_data.to) {
+                let maybe_conf = config.tokens.iter()
+                    .find(|t| t.contract == event_data.address);
+                //    .unwrap(); // trust me bro :)
+
+                let Some(token_conf) = maybe_conf else {
+                    eprintln!("(should be unreachable) received log from UNKNOWN contract: {}", event_data.address);
+                    // NEVER trust anyone
+                    return;
+                };
+
+                let amount_human = format_units(event_data.value, token_conf.decimals);
+
+                let event = PaymentEvent {
+                    network: config.name.clone(),
+                    tx_hash: log.transaction_hash.unwrap_or_default(),
+                    from: event_data.from,
+                    to: event_data.to,
+                    token: token_conf.symbol.clone(),
+                    amount: amount_human,
+                    amount_raw: event_data.value
+                };
+
+                let _ = sender.send(event).await;
+            }
+        }
+    }
 }
