@@ -30,7 +30,8 @@ pub async fn get_token(
     Path((name, symbol)): Path<(String, String)>,
 ) -> Result<Json<TokenConfig>, String> {
     match state.get_token(name, symbol).await {
-        Ok(conf) => Ok(Json(conf)),
+        Ok(Some(conf)) => Ok(Json(conf)),
+        Ok(None) => Err("token not found".to_owned()),
         Err(e) => Err(format!("{}", e)),
     }
 }

@@ -1,6 +1,7 @@
-use crate::chain::BlockchainAdapter;
-use crate::config::ChainConfig;
+use crate::chain::{BlockchainAdapter, ChainType};
+use crate::db::{Database, DatabaseAdapter};
 use crate::model::PaymentEvent;
+use crate::state::AppState;
 use alloy::consensus::Transaction;
 use alloy::network::TransactionResponse;
 use alloy::primitives::utils::format_units;
@@ -10,12 +11,14 @@ use alloy::rpc::types::Transaction as RpcTransaction;
 use alloy::rpc::types::{Block, Filter};
 use alloy::sol;
 use coins_bip32::prelude::{Parent, XPub};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::collections::hash_map::Entry;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 use url::Url;
+use crate::config::TokenConfig;
 
 const LAG: u64 = 3;
 
@@ -24,24 +27,24 @@ sol! {
     event Transfer(address indexed from, address indexed to, uint256 value);
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct EvmBlockchain {
-    config: Arc<ChainConfig>,
-    sender: mpsc::Sender<PaymentEvent>,
-}
-
-impl EvmBlockchain {
-    pub fn new(
-        config: Arc<ChainConfig>,
-        sender: mpsc::Sender<PaymentEvent>
-    ) -> Self {
-        Self { config, sender }
-    }
+    chain_name: String,
+    db: Arc<Database>,
+    sender: Option<Sender<PaymentEvent>>,
 }
 
 impl BlockchainAdapter for EvmBlockchain {
-    fn derive_address(&self, index: u32) -> anyhow::Result<String> {
-        let xpub = XPub::from_str(&self.config.xpub)?;
+    fn new(state: Arc<AppState>, _chain_type: ChainType, chain_name: &str, sender: Option<Sender<PaymentEvent>>) -> Self {
+        Self {
+            chain_name: chain_name.to_owned(),
+            db: state.db.clone(),
+            sender
+        }
+    }
+
+    async fn derive_address(&self, index: u32) -> anyhow::Result<String> {
+        let xpub = XPub::from_str(&self.db.get_xpub(&self.chain_name).await?)?;
 
         let child_xpub = xpub.derive_child(index)?;
         let verifying_key = child_xpub.as_ref();
@@ -50,17 +53,25 @@ impl BlockchainAdapter for EvmBlockchain {
     }
 
     async fn listen(&self) -> anyhow::Result<()> {
-        let rpc_url = Url::parse(&self.config.rpc_url)?;
+        if self.sender.is_none() {
+            anyhow::bail!("mpsc sender is empty")
+        }
+        let sender = self.sender.as_ref().unwrap();
+        
+        let rpc_url = Url::parse(&self.db.get_rpc_url(&self.chain_name).await?)?;
         let provider = ProviderBuilder::new().connect_http(rpc_url);
 
-        let mut last_block_num = match provider.get_block_number().await {
-            Ok(n) => n,
-            Err(e) => {
-                eprintln!("failed to get latest block number: {}. retrying in 5s...", e);
-                tokio::time::sleep(Duration::from_secs(5)).await;
-                provider.get_block_number().await?
-            }
-        };
+        let mut last_block_num = self.db.get_latest_block(&self.chain_name).await?;
+        if last_block_num == 0 {
+            last_block_num = match provider.get_block_number().await {
+                Ok(n) => n,
+                Err(e) => {
+                    eprintln!("failed to get latest block number: {}. retrying in 5s...", e);
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                    provider.get_block_number().await?
+                }
+            };
+        }
 
         if last_block_num <= LAG { return Ok(()); } // better to be safe than sorry
 
@@ -79,6 +90,17 @@ impl BlockchainAdapter for EvmBlockchain {
                 continue;
             }
 
+            let watch_addresses = self.db.get_watch_addresses(&self.chain_name).await?;
+            let address_set: HashSet<Address> = watch_addresses.iter()
+                .map(|s| Address::from_str(&s).unwrap_or_default())
+                .collect();
+            let chain_config = match self.db.get_chain(&self.chain_name).await? {
+                Some(cc) => cc,
+                None => {
+                    anyhow::bail!("failed to get chain config (???)");
+                }
+            };
+
             for block_num in (last_block_num + 1)..=current_block_num {
                 println!("processing block {}...", block_num);
 
@@ -89,48 +111,122 @@ impl BlockchainAdapter for EvmBlockchain {
                     .ok()
                     .flatten()
                 {
-                    let addresses = {
-                        let guard = self.config.watch_addresses.read().unwrap();
-                        guard.clone()
-                    };
-
-                    let transactions = process_block(&addresses, block)
+                    let transactions = process_block(&address_set, block)
                         .unwrap_or_default();
-                    for tx in transactions {
-                        let amount_human = format_units(tx.value(), self.config.decimals)?;
 
-                        let event = PaymentEvent {
-                            network: self.config.name.clone(),
-                            tx_hash: tx.tx_hash(),
-                            from: tx.from().to_string(),
-                            to: tx.to().unwrap_or_default().to_string(), // default is unreachable,
-                            // but it's better to keep this instead of ::unwrap()
-                            token: self.config.native_symbol.clone(),
-                            amount: amount_human,
-                            amount_raw: tx.value(),
-                            decimals: self.config.decimals,
-                        };
+                    if !transactions.is_empty() {
+                        for tx in transactions {
+                            let amount_human = format_units(tx.value(), chain_config.decimals)?;
 
-                        let _ = self.sender.send(event).await;
+                            let event = PaymentEvent {
+                                network: self.chain_name.clone(),
+                                tx_hash: tx.tx_hash(),
+                                from: tx.from().to_string(),
+                                to: tx.to().unwrap_or_default().to_string(), // default is unreachable,
+                                // but it's better to keep this instead of ::unwrap()
+                                token: chain_config.native_symbol.clone(),
+                                amount: amount_human,
+                                amount_raw: tx.value(),
+                                decimals: chain_config.decimals,
+                            };
+
+                            let _ = sender.send(event).await;
+                        }
                     }
                 }
 
-                let config = self.config.clone();
-                let sender = self.sender.clone();
-                process_logs(config, block_num, &provider, sender).await;
+                let sender = sender.clone();
+                self.process_logs(block_num, &address_set, &provider, sender).await?;
             }
 
             last_block_num = current_block_num;
+            if last_block_num % 10 == 0 { // database won't send killers to my home (I hope)
+                self.db.update_chain_block(&self.chain_name, last_block_num).await?;
+            }
         }
     }
+}
 
-    fn config(&self) -> Arc<ChainConfig> {
-        self.config.clone()
+impl EvmBlockchain {
+    async fn process_logs(
+        &self,
+        block_number: BlockNumber,
+        addresses: &HashSet<Address>,
+        provider: &impl Provider,
+        sender: Sender<PaymentEvent>,
+    ) -> anyhow::Result<()> {
+        let token_addresses: Vec<Address> = self.db.get_token_contracts(&self.chain_name).await?.iter()
+            .map(|c| Address::from_str(&c).unwrap_or_default())
+            .collect();
+
+        if token_addresses.is_empty() { return Ok(()); }
+
+        let filter = Filter::new()
+            .from_block(block_number)
+            .to_block(block_number)
+            .address(token_addresses)
+            .event("Transfer(address,address,uint256)");
+
+        let logs = match provider.get_logs(&filter).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("failed to get logs from {}: {}. Retrying in 3s...", self.chain_name, e);
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                provider.get_logs(&filter).await.unwrap_or_default()
+            }
+        };
+
+        let mut token_configs: HashMap<Address, TokenConfig> = HashMap::new();
+
+        for log in logs {
+            if let Ok(transfer) = log.log_decode::<Transfer>() {
+                let event_data = transfer.inner;
+
+                if addresses.contains(&event_data.to) {
+                    let token_conf = match token_configs.entry(event_data.address) {
+                        Entry::Occupied(entry) => entry.into_mut(),
+                        Entry::Vacant(entry) => {
+                            let maybe_conf = self.db.get_token_by_contract(
+                                &self.chain_name,
+                                event_data.address.to_string().as_str()
+                            ).await?;
+
+                            match maybe_conf {
+                                Some(tc) => entry.insert(tc),
+                                None => {
+                                    eprintln!("(should be unreachable) received log from UNKNOWN \
+                                    contract {}", event_data.address);
+                                    continue;
+                                }
+                            }
+                        }
+                    };
+
+                    let amount_human = format_units(event_data.value, token_conf.decimals)
+                        .unwrap_or_default();
+
+                    let event = PaymentEvent {
+                        network: self.chain_name.clone(),
+                        tx_hash: log.transaction_hash.unwrap_or_default(),
+                        from: event_data.from.to_string(),
+                        to: event_data.to.to_string(),
+                        token: token_conf.symbol.clone(),
+                        amount: amount_human,
+                        amount_raw: event_data.value,
+                        decimals: token_conf.decimals,
+                    };
+
+                    let _ = sender.send(event).await;
+                }
+            }
+        }
+
+        Ok(())
     }
 }
 
 fn process_block(
-    addresses: &HashSet<String>,
+    addresses: &HashSet<Address>,
     block: Block,
 ) -> anyhow::Result<Vec<RpcTransaction>> {
     let txs = block.into_transactions_vec();
@@ -139,83 +235,9 @@ fn process_block(
         .into_iter()
         .filter(|tx| {
             tx.to().map_or(false, |to|
-                addresses.contains(&to.to_string()))
+                addresses.contains(&to))
         })
         .collect();
 
     Ok(transactions)
-}
-
-async fn process_logs(
-    config: Arc<ChainConfig>,
-    block_number: BlockNumber,
-    provider: &impl Provider,
-    sender: mpsc::Sender<PaymentEvent>,
-) {
-    let token_addresses: Vec<Address> = config.tokens.read().unwrap().iter()
-        .map(|t| Address::from_str(&t.contract).unwrap_or_default())
-        .collect();
-
-    if token_addresses.is_empty() { return; }
-
-    let filter = Filter::new()
-        .from_block(block_number)
-        .to_block(block_number)
-        .address(token_addresses)
-        .event("Transfer(address,address,uint256)");
-
-    let logs = match provider.get_logs(&filter).await {
-        Ok(l) => l,
-        Err(e) => {
-            eprintln!("failed to get logs from {}: {}. Retrying in 3s...", config.name, e);
-            tokio::time::sleep(Duration::from_secs(3)).await;
-            provider.get_logs(&filter).await.unwrap_or_default()
-        }
-    };
-
-    for log in logs {
-        if let Ok(transfer) = log.log_decode::<Transfer>() {
-            let event_data = transfer.inner;
-
-            let addresses = {
-                let guard = config.watch_addresses.read().unwrap();
-                guard.clone()
-            };
-
-            if addresses.contains(&event_data.to.to_string()) {
-                let token_conf = {
-                    let guard = config.tokens.read().unwrap();
-                    let maybe_conf = guard.iter()
-                        .find(|t| t.contract == event_data.address.to_string());
-                        // .unwrap(); // trust me bro :)
-
-                    match maybe_conf.cloned() {
-                        Some(tc) => tc,
-                        None => {
-                            eprintln!("(should be unreachable) received log from UNKNOWN contract \
-                            for {}", event_data.address);
-                            // NEVER trust anyone
-                            return;
-                        }
-                    }
-                };
-
-                let amount_human = format_units(event_data.value, token_conf.decimals)
-                    .unwrap_or_default();
-
-                let event = PaymentEvent {
-                    network: config.name.clone(),
-                    tx_hash: log.transaction_hash.unwrap_or_default(),
-                    from: event_data.from.to_string(),
-                    to: event_data.to.to_string(),
-                    token: token_conf.symbol.clone(),
-                    amount: amount_human,
-                    amount_raw: event_data.value,
-                    decimals: token_conf.decimals,
-                };
-
-                let _ = sender.send(event).await;
-            }
-        }
-    }
 }

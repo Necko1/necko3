@@ -29,7 +29,7 @@ pub async fn get_chains(
 pub async fn get_chain(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
-) -> Json<MinChainConfig> {
+) -> Json<Option<MinChainConfig>> {
     Json(state.get_chain(&name).await)
 }
 

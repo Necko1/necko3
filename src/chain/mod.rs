@@ -1,11 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Sender;
 use crate::chain::Blockchain::Evm;
 use crate::chain::evm::EvmBlockchain;
 use crate::config::ChainConfig;
 use crate::model::PaymentEvent;
+use crate::state::AppState;
 
 pub mod evm;
 
@@ -23,43 +26,32 @@ impl Display for ChainType {
 }
 
 pub trait BlockchainAdapter: Sync + Send {
-    fn derive_address(&self, index: u32) -> anyhow::Result<String>;
+    fn new(state: Arc<AppState>, chain_type: ChainType, chain_name: &str, sender: Option<Sender<PaymentEvent>>) -> Self;
+    async fn derive_address(&self, index: u32) -> anyhow::Result<String>;
     async fn listen(&self) -> anyhow::Result<()>;
-    fn config(&self) -> Arc<ChainConfig>;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub enum Blockchain {
     Evm(EvmBlockchain),
 }
 
-impl Blockchain {
-    pub fn new(
-        config: Arc<ChainConfig>, 
-        sender: mpsc::Sender<PaymentEvent>
-    ) -> Self {
-        match config.chain_type {
-            ChainType::EVM => Evm(EvmBlockchain::new(config, sender)),
+impl BlockchainAdapter for Blockchain {
+    fn new(state: Arc<AppState>, chain_type: ChainType, chain_name: &str, sender: Option<Sender<PaymentEvent>>) -> Self {
+        match chain_type {
+            ChainType::EVM => Evm(EvmBlockchain::new(state, chain_type, chain_name, sender))
         }
     }
-}
 
-impl BlockchainAdapter for Blockchain {
-    fn derive_address(&self, index: u32) -> anyhow::Result<String> {
+    async fn derive_address(&self, index: u32) -> anyhow::Result<String> {
         match self {
-            Evm(bc) => bc.derive_address(index),
+            Evm(bc) => bc.derive_address(index).await,
         }
     }
 
     async fn listen(&self) -> anyhow::Result<()> {
         match self {
             Evm(bc) => bc.listen().await,
-        }
-    }
-
-    fn config(&self) -> Arc<ChainConfig> {
-        match self {
-            Evm(bc) => bc.config(),
         }
     }
 }

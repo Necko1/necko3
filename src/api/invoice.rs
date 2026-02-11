@@ -1,43 +1,28 @@
-use crate::chain::BlockchainAdapter;
+use crate::chain::{Blockchain, BlockchainAdapter};
+use crate::db::DatabaseAdapter;
 use crate::model::{CreateInvoiceReq, Invoice, InvoiceStatus};
 use crate::state::AppState;
 use alloy::primitives::utils::parse_units;
 use alloy::primitives::U256;
 use axum::extract::{Path, State};
 use axum::Json;
-use std::ops::Deref;
 use std::sync::Arc;
 
 pub async fn create_invoice(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateInvoiceReq>,
 ) -> String {
-    let adapter = {
-        let guard = state.adapters.read().await;
-        let maybe_adapter = guard.get(&payload.network);
-
-        let Some(cc) = maybe_adapter else {
-            return format!("Error: network '{}' is not currently supported", payload.network);
-        };
-
-        cc.deref().clone()
+    let chain_config = match state.db.get_chain(&payload.network).await {
+        Ok(occ) => match occ { 
+            Some(cc) => cc,
+            None => return format!("Error: network '{}' is not currently supported", payload.network)
+        },
+        Err(e) => return e.to_string()
     };
-    
-    let chain_config = adapter.config();
 
-    let token_decimals = {
-        let guard = chain_config.tokens.read().unwrap();
-
-        let token_conf = guard.iter()
-            .find(|t| t.symbol == payload.token);
-        if token_conf.is_none() && payload.token != chain_config.native_symbol {
-            return format!("Error: token '{}' is not currently supported on {}",
-                           payload.token, payload.network);
-        };
-
-        token_conf
-            .map(|t| t.decimals)
-            .unwrap_or(chain_config.decimals)
+    let token_decimals = match state.db.get_token_decimals(&payload.network, &payload.token).await { 
+        Ok(dec) => dec,
+        Err(e) => return e.to_string()
     };
 
     let amount_raw = match parse_units(&payload.amount, token_decimals) {
@@ -47,11 +32,14 @@ pub async fn create_invoice(
         }
     };
 
-    let Some(index) = state.get_free_slot() else {
+    let Some(index) = state.get_free_slot(&payload.network).await else {
         return "Error: no free slots available".into();
     };
 
-    let address = match adapter.derive_address(index) {
+
+    let blockchain = Blockchain::new(state.clone(), chain_config.chain_type,
+                                     &payload.network, None);
+    let address = match blockchain.derive_address(index).await {
         Ok(a) => a,
         Err(e) => {
             return format!("Error: failed to get address (index {}) for {} chain: {}",
@@ -68,14 +56,18 @@ pub async fn create_invoice(
         paid: "0".to_string(),
         paid_raw: U256::from(0),
         token: payload.token,
-        network: payload.network,
+        network: payload.network.clone(),
         created_at: chrono::Utc::now(),
         expires_at: chrono::Utc::now() + chrono::Duration::minutes(15),
         status: InvoiceStatus::Pending,
     };
 
-    state.active_invoices.insert(address.clone(), invoice);
-    chain_config.watch_addresses.write().unwrap().insert(address.clone());
+    if let Err(e) = state.db.add_invoice(&invoice).await {
+        return format!("Error: failed to add invoice: {}", e);
+    }
+    if let Err(e) = state.db.add_watch_address(&payload.network, &address).await {
+        return format!("Error: failed to add payment address to watch_addresses: {}", e)
+    }
 
     format!("Pay to: {:?} (index {})", address, index)
 }
@@ -83,18 +75,14 @@ pub async fn create_invoice(
 pub async fn get_invoices(
     State(state): State<Arc<AppState>>
 ) -> Json<Vec<Invoice>> {
-    Json(state.active_invoices.iter()
-        .map(|x| x.value().clone())
-        .collect::<Vec<_>>())
+    Json(state.db.get_invoices().await.unwrap()) // scary!
 }
 
 pub async fn get_invoice_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> Result<Json<Invoice>, String> {
-    let invoice = state.active_invoices.iter()
-        .find(|x| x.id == id)
-        .map(|x| x.value().clone());
+    let invoice = state.db.get_invoice(&id).await.unwrap();
 
     match invoice {
         Some(inv) => Ok(Json(inv)),
@@ -106,15 +94,6 @@ pub async fn delete_invoice(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
 ) -> String {
-    let maybe_address = state.active_invoices.iter()
-        .find(|x| x.id == id)
-        .map(|x| x.key().clone());
-
-    if let Some(address) = maybe_address {
-        if state.active_invoices.remove(&address).is_some() {
-            return "ok".to_owned();
-        }
-    }
-
-    "invoice not found".to_owned()
+    state.db.remove_invoice(&id).await.unwrap();
+    "ok".to_owned()
 }

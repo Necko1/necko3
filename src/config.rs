@@ -1,7 +1,7 @@
 use crate::chain::ChainType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
 #[derive(Debug, Clone, Eq, Hash, PartialEq, Deserialize, Serialize)]
 pub struct TokenConfig {
@@ -10,7 +10,7 @@ pub struct TokenConfig {
     pub decimals: u8,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ChainConfig {
     pub name: String,
     pub rpc_url: String,
@@ -18,9 +18,10 @@ pub struct ChainConfig {
     pub xpub: String,
     pub native_symbol: String,
     pub decimals: u8,
+    pub last_processed_block: u64,
 
-    pub watch_addresses: RwLock<HashSet<String>>,
-    pub tokens: RwLock<HashSet<TokenConfig>>,
+    pub watch_addresses: Arc<RwLock<HashSet<String>>>,
+    pub tokens: Arc<RwLock<HashSet<TokenConfig>>>,
 }
 
 
@@ -32,6 +33,7 @@ pub struct MinChainConfig {
     pub xpub: String,
     pub native_symbol: String,
     pub decimals: u8,
+    pub last_processed_block: u64,
 }
 
 impl Into<ChainConfig> for MinChainConfig {
@@ -43,8 +45,10 @@ impl Into<ChainConfig> for MinChainConfig {
             xpub: self.xpub,
             native_symbol: self.native_symbol,
             decimals: self.decimals,
-            watch_addresses: RwLock::new(HashSet::new()),
-            tokens: RwLock::new(HashSet::new()),
+            last_processed_block: self.last_processed_block,
+            
+            watch_addresses: Arc::new(RwLock::new(HashSet::new())),
+            tokens: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 }
@@ -57,7 +61,8 @@ impl Into<MinChainConfig> for ChainConfig {
             chain_type: self.chain_type,
             xpub: self.xpub,
             native_symbol: self.native_symbol,
-            decimals: self.decimals
+            decimals: self.decimals,
+            last_processed_block: self.last_processed_block,
         }
     }
 }
@@ -71,8 +76,10 @@ impl Into<ChainConfig> for &MinChainConfig {
             xpub: self.xpub.clone(),
             native_symbol: self.native_symbol.clone(),
             decimals: self.decimals,
-            watch_addresses: RwLock::new(HashSet::new()),
-            tokens: RwLock::new(HashSet::new()),
+            last_processed_block: self.last_processed_block,
+
+            watch_addresses: Arc::new(RwLock::new(HashSet::new())),
+            tokens: Arc::new(RwLock::new(HashSet::new())),
         }
     }
 }
@@ -85,7 +92,8 @@ impl Into<MinChainConfig> for &ChainConfig {
             chain_type: self.chain_type,
             xpub: self.xpub.clone(),
             native_symbol: self.native_symbol.clone(),
-            decimals: self.decimals
+            decimals: self.decimals,
+            last_processed_block: self.last_processed_block,
         }
     }
 }
