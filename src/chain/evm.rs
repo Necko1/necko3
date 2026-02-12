@@ -44,7 +44,8 @@ impl BlockchainAdapter for EvmBlockchain {
     }
 
     async fn derive_address(&self, index: u32) -> anyhow::Result<String> {
-        let xpub = XPub::from_str(&self.db.get_xpub(&self.chain_name).await?)?;
+        let xpub = XPub::from_str(&self.db.get_xpub(&self.chain_name).await?
+            .ok_or_else(|| anyhow::anyhow!("chain {} does not exists", self.chain_name))?)?;
 
         let child_xpub = xpub.derive_child(index)?;
         let verifying_key = child_xpub.as_ref();
@@ -58,10 +59,12 @@ impl BlockchainAdapter for EvmBlockchain {
         }
         let sender = self.sender.as_ref().unwrap();
         
-        let rpc_url = Url::parse(&self.db.get_rpc_url(&self.chain_name).await?)?;
+        let rpc_url = Url::parse(&self.db.get_rpc_url(&self.chain_name).await?
+            .ok_or_else(|| anyhow::anyhow!("chain {} does not exists", self.chain_name))?)?;
         let provider = ProviderBuilder::new().connect_http(rpc_url);
 
-        let mut last_block_num = self.db.get_latest_block(&self.chain_name).await?;
+        let mut last_block_num = self.db.get_latest_block(&self.chain_name).await?
+            .ok_or_else(|| anyhow::anyhow!("chain {} does not exists", self.chain_name))?;
         if last_block_num == 0 {
             last_block_num = match provider.get_block_number().await {
                 Ok(n) => n,
@@ -90,7 +93,8 @@ impl BlockchainAdapter for EvmBlockchain {
                 continue;
             }
 
-            let watch_addresses = self.db.get_watch_addresses(&self.chain_name).await?;
+            let watch_addresses = self.db.get_watch_addresses(&self.chain_name).await?
+                .ok_or_else(|| anyhow::anyhow!("chain {} does not exists", self.chain_name))?;
             let address_set: HashSet<Address> = watch_addresses.iter()
                 .map(|s| Address::from_str(&s).unwrap_or_default())
                 .collect();
@@ -155,7 +159,9 @@ impl EvmBlockchain {
         provider: &impl Provider,
         sender: Sender<PaymentEvent>,
     ) -> anyhow::Result<()> {
-        let token_addresses: Vec<Address> = self.db.get_token_contracts(&self.chain_name).await?.iter()
+        let token_addresses: Vec<Address> = self.db.get_token_contracts(&self.chain_name).await?
+            .ok_or_else(|| anyhow::anyhow!("chain {} does not exists", self.chain_name))?
+            .iter()
             .map(|c| Address::from_str(&c).unwrap_or_default())
             .collect();
 

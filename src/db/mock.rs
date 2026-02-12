@@ -24,8 +24,15 @@ impl MockDatabase {
 }
 
 impl DatabaseAdapter for MockDatabase {
-    async fn get_chains(&self) -> anyhow::Result<HashMap<String, ChainConfig>> {
+    async fn get_chains_map(&self) -> anyhow::Result<HashMap<String, ChainConfig>> {
         Ok(self.chains.read().unwrap().clone())
+    }
+
+    async fn get_chains(&self) -> anyhow::Result<Vec<ChainConfig>> {
+        Ok(self.chains.read().unwrap()
+            .iter()
+            .map(|x| x.1.clone())
+            .collect::<Vec<_>>())
     }
 
     async fn get_chain(&self, chain_name: &str) -> anyhow::Result<Option<ChainConfig>> {
@@ -57,10 +64,10 @@ impl DatabaseAdapter for MockDatabase {
         Ok(())
     }
 
-    async fn get_latest_block(&self, chain_name: &str) -> anyhow::Result<u64> {
+    async fn get_latest_block(&self, chain_name: &str) -> anyhow::Result<Option<u64>> {
         match self.chains.write().unwrap().get(chain_name) {
-            Some(c) => Ok(c.last_processed_block),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
+            Some(c) => Ok(Some(c.last_processed_block)),
+            None => Ok(None),
         }
     }
 
@@ -83,12 +90,16 @@ impl DatabaseAdapter for MockDatabase {
         unimplemented!("mock database does not have ids")
     }
 
-    async fn get_watch_addresses(&self, chain_name: &str) -> anyhow::Result<Vec<String>> {
+    async fn chain_exists(&self, chain_name: &str) -> anyhow::Result<bool> {
+        Ok(self.chains.read().unwrap().contains_key(chain_name))
+    }
+
+    async fn get_watch_addresses(&self, chain_name: &str) -> anyhow::Result<Option<Vec<String>>> {
         match self.chains.read().unwrap().get(chain_name) {
-            Some(c) => Ok(c.watch_addresses.read().unwrap().iter()
+            Some(c) => Ok(Some(c.watch_addresses.read().unwrap().iter()
                 .cloned()
-                .collect()),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
+                .collect())),
+            None => Ok(None),
         }
     }
 
@@ -115,7 +126,7 @@ impl DatabaseAdapter for MockDatabase {
         match self.chains.read().unwrap().get(chain_name) {
             Some(c) => {
                 c.watch_addresses.write().unwrap()
-                    .retain(|x| !to_remove.contains(x.as_str()));
+                    .retain(|x: &String| !to_remove.contains(x.as_str()));
             }
             None => anyhow::bail!("chain '{}' does not exist", chain_name),
         }
@@ -134,35 +145,34 @@ impl DatabaseAdapter for MockDatabase {
         Ok(())
     }
 
-    async fn get_xpub(&self, chain_name: &str) -> anyhow::Result<String> {
+    async fn get_xpub(&self, chain_name: &str) -> anyhow::Result<Option<String>> {
         match self.chains.read().unwrap().get(chain_name) {
-            Some(c) => Ok(c.xpub.clone()),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
+            Some(c) => Ok(Some(c.xpub.clone())),
+            None => Ok(None),
         }
     }
 
-    async fn get_rpc_url(&self, chain_name: &str) -> anyhow::Result<String> {
+    async fn get_rpc_url(&self, chain_name: &str) -> anyhow::Result<Option<String>> {
         match self.chains.read().unwrap().get(chain_name) {
-            Some(c) => Ok(c.rpc_url.clone()),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
+            Some(c) => Ok(Some(c.rpc_url.clone())),
+            None => Ok(None),
         }
     }
 
-    async fn get_tokens(&self, chain_name: &str) -> anyhow::Result<Vec<TokenConfig>> {
-        match self.chains.read().unwrap().get(chain_name) {
-            Some(c) => Ok(c.tokens.read().unwrap().iter()
+    async fn get_tokens(&self, chain_name: &str) -> anyhow::Result<Option<Vec<TokenConfig>>> {
+        // actually I can do all of them with mappings, but I won't hehe (not now)
+        Ok(self.chains.read().unwrap().get(chain_name)
+            .map(|c| c.tokens.read().unwrap().iter()
                 .cloned()
-                .collect()),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
-        }
+                .collect()))
     }
 
-    async fn get_token_contracts(&self, chain_name: &str) -> anyhow::Result<Vec<String>> {
+    async fn get_token_contracts(&self, chain_name: &str) -> anyhow::Result<Option<Vec<String>>> {
         match self.chains.read().unwrap().get(chain_name) {
-            Some(c) => Ok(c.tokens.read().unwrap().iter()
+            Some(c) => Ok(Some(c.tokens.read().unwrap().iter()
                 .map(|tc| tc.contract.clone())
-                .collect()),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
+                .collect())),
+            None => Ok(None),
         }
     }
 
@@ -171,7 +181,7 @@ impl DatabaseAdapter for MockDatabase {
             Some(c) => Ok(c.tokens.read().unwrap().iter()
                 .find(|tc| tc.symbol == token_symbol)
                 .cloned()),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
+            None => Ok(None),
         }
     }
 
@@ -184,7 +194,7 @@ impl DatabaseAdapter for MockDatabase {
             Some(c) => Ok(c.tokens.read().unwrap().iter()
                 .find(|tc| tc.contract == contract_address)
                 .cloned()),
-            None => anyhow::bail!("chain '{}' does not exist", chain_name),
+            None => Ok(None),
         }
     }
 
@@ -306,7 +316,9 @@ impl DatabaseAdapter for MockDatabase {
             None => anyhow::bail!("invoice '{}' does not exist", uuid),
         };
 
-        let decimals = self.get_token_decimals(&inv.network, &inv.token).await?;
+        let decimals = self.get_token_decimals(&inv.network, &inv.token).await?
+            .ok_or_else(|| anyhow::anyhow!("chain or token ('{}'/'{}') does not exist",
+                inv.network, inv.token))?;
 
         inv.paid_raw += amount_raw;
 
@@ -340,22 +352,22 @@ impl DatabaseAdapter for MockDatabase {
         Ok(old_invoices)
     }
 
-    async fn is_invoice_expired(&self, uuid: &str) -> anyhow::Result<bool> {
+    async fn is_invoice_expired(&self, uuid: &str) -> anyhow::Result<Option<bool>> {
         Ok(self.invoices.iter()
-            .any(|inv| inv.id == uuid
-                && inv.status == InvoiceStatus::Expired))
+            .find(|inv| inv.id == uuid)
+            .map(|inv| inv.status == InvoiceStatus::Expired))
     }
 
-    async fn is_invoice_paid(&self, uuid: &str) -> anyhow::Result<bool> {
+    async fn is_invoice_paid(&self, uuid: &str) -> anyhow::Result<Option<bool>> {
         Ok(self.invoices.iter()
-            .any(|inv| inv.id == uuid
-                && inv.status == InvoiceStatus::Paid))
+            .find(|inv| inv.id == uuid)
+            .map(|inv| inv.status == InvoiceStatus::Paid))
     }
 
-    async fn is_invoice_pending(&self, uuid: &str) -> anyhow::Result<bool> {
+    async fn is_invoice_pending(&self, uuid: &str) -> anyhow::Result<Option<bool>> {
         Ok(self.invoices.iter()
-            .any(|inv| inv.id == uuid
-                && inv.status == InvoiceStatus::Pending))
+            .find(|inv| inv.id == uuid)
+            .map(|inv| inv.status == InvoiceStatus::Pending))
     }
 
     async fn remove_invoice(&self, uuid: &str) -> anyhow::Result<()> {
@@ -364,17 +376,17 @@ impl DatabaseAdapter for MockDatabase {
         Ok(())
     }
 
-    async fn get_token_decimals(&self, chain_name: &str, token_symbol: &str) -> anyhow::Result<u8> {
+    async fn get_token_decimals(&self, chain_name: &str, token_symbol: &str) -> anyhow::Result<Option<u8>> {
         if let Some(decimals) = self._get_token_decimals(chain_name, token_symbol)?
         {
-            return Ok(decimals)
+            return Ok(Some(decimals))
         }
 
         let chain_config = {
             let guard = self.chains.read().unwrap();
 
             let Some(cc) = guard.get(chain_name).cloned() else {
-                anyhow::bail!("chain '{}' does not exist", chain_name);
+                return Ok(None)
             };
 
             cc
@@ -383,7 +395,7 @@ impl DatabaseAdapter for MockDatabase {
         if token_symbol == chain_config.native_symbol {
             self._insert_token_decimals(chain_name, token_symbol, chain_config.decimals)?;
 
-            return Ok(chain_config.decimals);
+            return Ok(Some(chain_config.decimals));
         }
 
         match chain_config.tokens.read().unwrap().iter()
@@ -391,9 +403,9 @@ impl DatabaseAdapter for MockDatabase {
             Some(tc) => {
                 self._insert_token_decimals(chain_name, token_symbol, tc.decimals)?;
 
-                Ok(tc.decimals)
+                Ok(Some(tc.decimals))
             },
-            None => anyhow::bail!("token '{}' does not exist", token_symbol),
+            None => Ok(None),
         }
     }
 }

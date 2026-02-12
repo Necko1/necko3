@@ -1,9 +1,7 @@
 use crate::chain::{Blockchain, BlockchainAdapter};
-use crate::config::{ChainConfig, MinChainConfig, TokenConfig};
 use crate::db::{Database, DatabaseAdapter};
 use crate::model::{InvoiceStatus, PaymentEvent};
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -16,8 +14,6 @@ pub struct AppState {
     pub db: Arc<Database>,
     pub active_chains: RwLock<HashMap<String, JoinHandle<()>>>,
 }
-
-
 
 impl AppState {
     pub fn new(db: Database) -> (Self, Receiver<PaymentEvent>) {
@@ -170,90 +166,6 @@ impl AppState {
     }
 }
 
-// todo/ this all shit is for rest api so it will be necessary to move this to the api section (not literally)
-impl AppState {
-    pub async fn add_chain(
-        self: Arc<Self>,
-        chain: ChainConfig
-    ) -> anyhow::Result<()> {
-        self.db.add_chain(&chain).await?;
-        self.start_listening(chain.name).await?;
-
-        Ok(())
-    }
-
-    pub async fn get_chains(&self) -> Vec<MinChainConfig> {
-        match self.db.get_chains().await {
-            Ok(map) => map.iter()
-                .map(|x| {
-                    x.1.deref().into()
-                })
-                .collect(),
-            Err(e) => {
-                eprintln!("failed to get chain list: {}", e); // no err return? 😿😿😿
-                vec![]
-            }
-        }
-    }
-
-    pub async fn get_chain(
-        &self,
-        name: &str
-    ) -> Option<MinChainConfig> {
-        let maybe_chain_config = match self.db.get_chain(name).await {
-            Ok(chain) => chain,
-            Err(e) => {
-                eprintln!("failed to get chain '{}': {}", name, e);
-                None
-            }
-        };
-
-        maybe_chain_config.map(|config| config.into())
-    }
-
-    pub async fn remove_chain(
-        &self,
-        name: &str
-    ) -> anyhow::Result<()> {
-        self.stop_listening(name.to_string()).await?;
-
-        self.db.remove_chain(name).await?;
-
-        Ok(())
-    }
-
-    pub async fn add_token(
-        &self,
-        chain_name: String,
-        token: TokenConfig
-    ) -> anyhow::Result<()> {
-        self.db.add_token(&chain_name, &token).await
-    }
-
-    pub async fn remove_token(
-        &self,
-        chain_name: String,
-        symbol: String,
-    ) -> anyhow::Result<()> {
-        self.db.remove_token(&chain_name, &symbol).await
-    }
-
-    pub async fn get_tokens(
-        &self,
-        chain_name: String
-    ) -> anyhow::Result<Vec<TokenConfig>> {
-        self.db.get_tokens(&chain_name).await
-    }
-
-    pub async fn get_token(
-        &self,
-        chain_name: String,
-        symbol: String,
-    ) -> anyhow::Result<Option<TokenConfig>> {
-        self.db.get_token(&chain_name, &symbol).await
-    }
-}
-
 impl AppState {
     pub async fn start_listening(self: Arc<Self>, chain: String) -> anyhow::Result<()> {
         if self.active_chains.read().await.contains_key(&chain) {
@@ -285,10 +197,10 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn stop_listening(&self, chain: String) -> anyhow::Result<()> {
+    pub async fn stop_listening(&self, chain: &str) -> anyhow::Result<()> {
         let mut active_chains = self.active_chains.write().await;
 
-        if let Some(handle) = active_chains.remove(&chain) {
+        if let Some(handle) = active_chains.remove(chain) {
             handle.abort();
         } else {
             anyhow::bail!("chain {} is not listening", chain);

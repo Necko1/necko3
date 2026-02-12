@@ -4,34 +4,36 @@ use crate::db::postgres::Postgres;
 use crate::model::{Invoice, InvoiceStatus};
 use alloy::primitives::U256;
 use std::collections::HashMap;
-use url::Url;
 
 pub mod postgres;
 pub mod mock;
 
 pub trait DatabaseAdapter: Send + Sync {
     // chain
-    async fn get_chains(&self) -> anyhow::Result<HashMap<String, ChainConfig>>;
+    async fn get_chains_map(&self) -> anyhow::Result<HashMap<String, ChainConfig>>;
+    async fn get_chains(&self) -> anyhow::Result<Vec<ChainConfig>>;
     async fn get_chain(&self, chain_name: &str) -> anyhow::Result<Option<ChainConfig>>;
     async fn get_chain_by_id(&self, id: u32) -> anyhow::Result<Option<ChainConfig>>;
     async fn add_chain(&self, chain_config: &ChainConfig) -> anyhow::Result<()>;
     async fn update_chain_block(&self, chain_name: &str, block_num: u64) -> anyhow::Result<()>;
-    async fn get_latest_block(&self, chain_name: &str) -> anyhow::Result<u64>;
+    async fn get_latest_block(&self, chain_name: &str) -> anyhow::Result<Option<u64>>;
     async fn get_chains_with_token(&self, token_symbol: &str) -> anyhow::Result<Vec<ChainConfig>>;
     async fn remove_chain(&self, chain_name: &str) -> anyhow::Result<()>;
     async fn remove_chain_by_id(&self, id: u32) -> anyhow::Result<()>;
+    async fn chain_exists(&self, chain_name: &str) -> anyhow::Result<bool>;
 
-    async fn get_watch_addresses(&self, chain_name: &str) -> anyhow::Result<Vec<String>>;
+    async fn get_watch_addresses(&self, chain_name: &str) -> anyhow::Result<Option<Vec<String>>>;
     async fn remove_watch_address(&self, chain_name: &str, address: &str) -> anyhow::Result<()>;
-    async fn remove_watch_addresses_bulk<S: AsRef<str>>(&self, chain_name: &str, addresses: &[S]) -> anyhow::Result<()>;
+    async fn remove_watch_addresses_bulk<S: AsRef<str>>(&self, chain_name: &str, addresses: &[S])
+        -> anyhow::Result<()>;
     async fn add_watch_address(&self, chain_name: &str, address: &str) -> anyhow::Result<()>;
 
-    async fn get_xpub(&self, chain_name: &str) -> anyhow::Result<String>;
-    async fn get_rpc_url(&self, chain_name: &str) -> anyhow::Result<String>;
+    async fn get_xpub(&self, chain_name: &str) -> anyhow::Result<Option<String>>;
+    async fn get_rpc_url(&self, chain_name: &str) -> anyhow::Result<Option<String>>;
 
     // token
-    async fn get_tokens(&self, chain_name: &str) -> anyhow::Result<Vec<TokenConfig>>;
-    async fn get_token_contracts(&self, chain_name: &str) -> anyhow::Result<Vec<String>>;
+    async fn get_tokens(&self, chain_name: &str) -> anyhow::Result<Option<Vec<TokenConfig>>>;
+    async fn get_token_contracts(&self, chain_name: &str) -> anyhow::Result<Option<Vec<String>>>;
     async fn get_token(&self, chain_name: &str, token_symbol: &str)
         -> anyhow::Result<Option<TokenConfig>>;
     async fn get_token_by_id(&self, chain_name: &str, id: u32)
@@ -61,13 +63,13 @@ pub trait DatabaseAdapter: Send + Sync {
         -> anyhow::Result<Option<Invoice>>;
     async fn expire_old_invoices(&self)
         -> anyhow::Result<Vec<(String, String, String)>>; // (uuid, network, address)
-    async fn is_invoice_expired(&self, uuid: &str) -> anyhow::Result<bool>;
-    async fn is_invoice_paid(&self, uuid: &str) -> anyhow::Result<bool>;
-    async fn is_invoice_pending(&self, uuid: &str) -> anyhow::Result<bool>;
+    async fn is_invoice_expired(&self, uuid: &str) -> anyhow::Result<Option<bool>>;
+    async fn is_invoice_paid(&self, uuid: &str) -> anyhow::Result<Option<bool>>;
+    async fn is_invoice_pending(&self, uuid: &str) -> anyhow::Result<Option<bool>>;
     async fn remove_invoice(&self, uuid: &str) -> anyhow::Result<()>;
     
     // other
-    async fn get_token_decimals(&self, chain_name: &str, token_symbol: &str) -> anyhow::Result<u8>;
+    async fn get_token_decimals(&self, chain_name: &str, token_symbol: &str) -> anyhow::Result<Option<u8>>;
 }
 
 pub enum Database {
@@ -76,7 +78,14 @@ pub enum Database {
 }
 
 impl DatabaseAdapter for Database {
-    async fn get_chains(&self) -> anyhow::Result<HashMap<String, ChainConfig>> {
+    async fn get_chains_map(&self) -> anyhow::Result<HashMap<String, ChainConfig>> {
+        match self {
+            Database::Mock(db) => db.get_chains_map().await,
+            Database::Postgres(db) => db.get_chains_map().await,
+        }
+    }
+
+    async fn get_chains(&self) -> anyhow::Result<Vec<ChainConfig>> {
         match self {
             Database::Mock(db) => db.get_chains().await,
             Database::Postgres(db) => db.get_chains().await,
@@ -111,7 +120,7 @@ impl DatabaseAdapter for Database {
         }
     }
 
-    async fn get_latest_block(&self, chain_name: &str) -> anyhow::Result<u64> {
+    async fn get_latest_block(&self, chain_name: &str) -> anyhow::Result<Option<u64>> {
         match self {
             Database::Mock(db) => db.get_latest_block(chain_name).await,
             Database::Postgres(db) => db.get_latest_block(chain_name).await,
@@ -139,7 +148,14 @@ impl DatabaseAdapter for Database {
         }
     }
 
-    async fn get_watch_addresses(&self, chain_name: &str) -> anyhow::Result<Vec<String>> {
+    async fn chain_exists(&self, chain_name: &str) -> anyhow::Result<bool> {
+        match self {
+            Database::Mock(db) => db.chain_exists(chain_name).await,
+            Database::Postgres(db) => db.chain_exists(chain_name).await,
+        }
+    }
+
+    async fn get_watch_addresses(&self, chain_name: &str) -> anyhow::Result<Option<Vec<String>>> {
         match self {
             Database::Mock(db) => db.get_watch_addresses(chain_name).await,
             Database::Postgres(db) => db.get_watch_addresses(chain_name).await,
@@ -167,28 +183,28 @@ impl DatabaseAdapter for Database {
         }
     }
 
-    async fn get_xpub(&self, chain_name: &str) -> anyhow::Result<String> {
+    async fn get_xpub(&self, chain_name: &str) -> anyhow::Result<Option<String>> {
         match self {
             Database::Mock(db) => db.get_xpub(chain_name).await,
             Database::Postgres(db) => db.get_xpub(chain_name).await,
         }
     }
 
-    async fn get_rpc_url(&self, chain_name: &str) -> anyhow::Result<String> {
+    async fn get_rpc_url(&self, chain_name: &str) -> anyhow::Result<Option<String>> {
         match self {
             Database::Mock(db) => db.get_rpc_url(chain_name).await,
             Database::Postgres(db) => db.get_rpc_url(chain_name).await,
         }
     }
 
-    async fn get_tokens(&self, chain_name: &str) -> anyhow::Result<Vec<TokenConfig>> {
+    async fn get_tokens(&self, chain_name: &str) -> anyhow::Result<Option<Vec<TokenConfig>>> {
         match self {
             Database::Mock(db) => db.get_tokens(chain_name).await,
             Database::Postgres(db) => db.get_tokens(chain_name).await,
         }
     }
 
-    async fn get_token_contracts(&self, chain_name: &str) -> anyhow::Result<Vec<String>> {
+    async fn get_token_contracts(&self, chain_name: &str) -> anyhow::Result<Option<Vec<String>>> {
         match self {
             Database::Mock(db) => db.get_token_contracts(chain_name).await,
             Database::Postgres(db) => db.get_token_contracts(chain_name).await,
@@ -335,21 +351,21 @@ impl DatabaseAdapter for Database {
         }
     }
 
-    async fn is_invoice_expired(&self, uuid: &str) -> anyhow::Result<bool> {
+    async fn is_invoice_expired(&self, uuid: &str) -> anyhow::Result<Option<bool>> {
         match self {
             Database::Mock(db) => db.is_invoice_expired(uuid).await,
             Database::Postgres(db) => db.is_invoice_expired(uuid).await,
         }
     }
 
-    async fn is_invoice_paid(&self, uuid: &str) -> anyhow::Result<bool> {
+    async fn is_invoice_paid(&self, uuid: &str) -> anyhow::Result<Option<bool>> {
         match self {
             Database::Mock(db) => db.is_invoice_paid(uuid).await,
             Database::Postgres(db) => db.is_invoice_paid(uuid).await,
         }
     }
 
-    async fn is_invoice_pending(&self, uuid: &str) -> anyhow::Result<bool> {
+    async fn is_invoice_pending(&self, uuid: &str) -> anyhow::Result<Option<bool>> {
         match self {
             Database::Mock(db) => db.is_invoice_pending(uuid).await,
             Database::Postgres(db) => db.is_invoice_pending(uuid).await,
@@ -363,7 +379,7 @@ impl DatabaseAdapter for Database {
         }
     }
 
-    async fn get_token_decimals(&self, chain_name: &str, token_symbol: &str) -> anyhow::Result<u8> {
+    async fn get_token_decimals(&self, chain_name: &str, token_symbol: &str) -> anyhow::Result<Option<u8>> {
         match self {
             Database::Mock(db) => db.get_token_decimals(chain_name, token_symbol).await,
             Database::Postgres(db) => db.get_token_decimals(chain_name, token_symbol).await,

@@ -1,18 +1,16 @@
-use serde::{Deserialize, Serialize};
-use std::fmt::{Display, Formatter};
-use std::ops::Deref;
-use std::sync::Arc;
-use tokio::sync::mpsc;
-use tokio::sync::mpsc::Sender;
-use crate::chain::Blockchain::Evm;
 use crate::chain::evm::EvmBlockchain;
-use crate::config::ChainConfig;
+use crate::chain::Blockchain::Evm;
 use crate::model::PaymentEvent;
 use crate::state::AppState;
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
+use std::sync::Arc;
+use tokio::sync::mpsc::Sender;
+use utoipa::ToSchema;
 
 pub mod evm;
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, ToSchema)]
 pub enum ChainType {
     EVM
 }

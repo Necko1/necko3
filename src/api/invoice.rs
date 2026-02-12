@@ -1,51 +1,48 @@
 use crate::chain::{Blockchain, BlockchainAdapter};
 use crate::db::DatabaseAdapter;
-use crate::model::{CreateInvoiceReq, Invoice, InvoiceStatus};
+use crate::model::{ApiResponse, ApiError, CreateInvoiceReq, Empty, Invoice, InvoiceStatus};
 use crate::state::AppState;
 use alloy::primitives::utils::parse_units;
 use alloy::primitives::U256;
 use axum::extract::{Path, State};
 use axum::Json;
 use std::sync::Arc;
+use axum::http::StatusCode;
 
+#[utoipa::path(
+    post,
+    path = "/invoice",
+    request_body = CreateInvoiceReq,
+    responses(
+        (status = 201, description = "Invoice created", body = ApiResponse<Invoice>),
+        (status = 400, description = "Bad Request", body = ApiResponse<Empty>),
+        (status = 500, description = "Server Error", body = ApiResponse<Empty>)
+    ),
+    tag = "Invoices"
+)]
 pub async fn create_invoice(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateInvoiceReq>,
-) -> String {
-    let chain_config = match state.db.get_chain(&payload.network).await {
-        Ok(occ) => match occ { 
-            Some(cc) => cc,
-            None => return format!("Error: network '{}' is not currently supported", payload.network)
-        },
-        Err(e) => return e.to_string()
-    };
+) -> Result<(StatusCode, Json<ApiResponse<Invoice>>), ApiError>  {
+    let chain_config = state.db.get_chain(&payload.network).await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?
+        .ok_or_else(|| ApiError::BadRequest(format!("Network '{}' not supported", payload.network)))?;
 
-    let token_decimals = match state.db.get_token_decimals(&payload.network, &payload.token).await { 
-        Ok(dec) => dec,
-        Err(e) => return e.to_string()
-    };
+    let token_decimals = state.db.get_token_decimals(&payload.network, &payload.token).await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?
+        // who knows :)
+        .ok_or_else(|| ApiError::BadRequest(format!("Network '{}' not supported", payload.network)))?;
 
-    let amount_raw = match parse_units(&payload.amount, token_decimals) {
-        Ok(a) => a,
-        Err(e) => {
-            return format!("Error while trying to parse units: {}", e)
-        }
-    };
+    let amount_raw = parse_units(&payload.amount, token_decimals)
+        .map_err(|e| ApiError::BadRequest(format!("Invalid amount format: {}", e)))?;
 
-    let Some(index) = state.get_free_slot(&payload.network).await else {
-        return "Error: no free slots available".into();
-    };
+    let index = state.get_free_slot(&payload.network).await
+        .ok_or_else(|| ApiError::InternalServerError("No free slots available".to_owned()))?;
 
-
-    let blockchain = Blockchain::new(state.clone(), chain_config.chain_type,
-                                     &payload.network, None);
-    let address = match blockchain.derive_address(index).await {
-        Ok(a) => a,
-        Err(e) => {
-            return format!("Error: failed to get address (index {}) for {} chain: {}",
-                           index, chain_config.chain_type, e);
-        }
-    };
+    let blockchain = Blockchain::new(
+        state.clone(), chain_config.chain_type, &payload.network, None);
+    let address = blockchain.derive_address(index).await
+        .map_err(|e| ApiError::InternalServerError(format!("Failed to derive address: {}", e)))?;
 
     let invoice = Invoice {
         id: uuid::Uuid::new_v4().to_string(),
@@ -62,38 +59,74 @@ pub async fn create_invoice(
         status: InvoiceStatus::Pending,
     };
 
-    if let Err(e) = state.db.add_invoice(&invoice).await {
-        return format!("Error: failed to add invoice: {}", e);
-    }
-    if let Err(e) = state.db.add_watch_address(&payload.network, &address).await {
-        return format!("Error: failed to add payment address to watch_addresses: {}", e)
-    }
+    state.db.add_invoice(&invoice).await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
 
-    format!("Pay to: {:?} (index {})", address, index)
+    state.db.add_watch_address(&payload.network, &address).await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
+
+    Ok((StatusCode::CREATED, Json(ApiResponse::success(invoice))))
 }
 
+#[utoipa::path(
+    get,
+    path = "/invoice",
+    responses(
+        (status = 200, description = "List all invoices", body = ApiResponse<Vec<Invoice>>),
+        (status = 500, description = "Server error", body = ApiResponse<Empty>)
+    ),
+    tag = "Invoices"
+)]
 pub async fn get_invoices(
     State(state): State<Arc<AppState>>
-) -> Json<Vec<Invoice>> {
-    Json(state.db.get_invoices().await.unwrap()) // scary!
+) -> Result<(StatusCode, Json<ApiResponse<Vec<Invoice>>>), ApiError> {
+    let invoices = state.db.get_invoices().await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
+    Ok((StatusCode::OK, Json(ApiResponse::success(invoices))))
 }
 
+#[utoipa::path(
+    get,
+    path = "/invoice/{id}",
+    params(
+        ("id" = String, Path, description = "Invoice UUID")
+    ),
+    responses(
+        (status = 200, description = "Invoice data", body = ApiResponse<Invoice>),
+        (status = 404, description = "Invoice not found", body = ApiResponse<Empty>),
+        (status = 500, description = "Server error", body = ApiResponse<Empty>)
+    ),
+    tag = "Invoices"
+)]
 pub async fn get_invoice_by_id(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> Result<Json<Invoice>, String> {
-    let invoice = state.db.get_invoice(&id).await.unwrap();
+) -> Result<(StatusCode, Json<ApiResponse<Invoice>>), ApiError> {
+    let invoice = state.db.get_invoice(&id).await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?
+        .ok_or_else(|| ApiError::NotFound("Invoice not found".into()))?;
 
-    match invoice {
-        Some(inv) => Ok(Json(inv)),
-        None => Err("invoice not found".to_owned()),
-    }
+    Ok((StatusCode::OK, Json(ApiResponse::success(invoice))))
 }
 
+#[utoipa::path(
+    delete,
+    path = "/invoice/{id}",
+    params(
+        ("id" = String, Path, description = "Invoice UUID")
+    ),
+    responses(
+        (status = 200, description = "Invoice deleted", body = ApiResponse<Empty>),
+        (status = 404, description = "Invoice not found", body = ApiResponse<Empty>),
+        (status = 500, description = "Server error", body = ApiResponse<Empty>)
+    ),
+    tag = "Invoices"
+)]
 pub async fn delete_invoice(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
-) -> String {
-    state.db.remove_invoice(&id).await.unwrap();
-    "ok".to_owned()
+) -> Result<(StatusCode, Json<ApiResponse<String>>), ApiError> {
+    state.db.remove_invoice(&id).await
+        .map_err(|e| ApiError::InternalServerError(e.to_string()))?;
+    Ok((StatusCode::OK, Json(ApiResponse::ok())))
 }
