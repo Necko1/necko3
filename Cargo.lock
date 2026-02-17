@@ -2772,7 +2772,7 @@ dependencies = [
 [[package]]
 name = "necko3-core"
 version = "1.0.0"
-source = "git+https://github.com/necko-moe/necko3-core.git#da155561c746ee24faed7e06cca06e6cc9e7eb3e"
+source = "git+https://github.com/necko-moe/necko3-core.git#62571eddc9706d81818f1b348fdd4a9d4c08bcfe"
 dependencies = [
  "alloy",
  "anyhow",

@@ -2,7 +2,7 @@ pub mod token;
 
 pub use token::*;
 
-use necko3_core::config::ChainConfig;
+use necko3_core::model::ChainConfig;
 use necko3_core::db::DatabaseAdapter;
 use crate::model::{ApiError, ApiResponse, Empty};
 use necko3_core::model::PartialChainUpdate as UpdateChainReq;
@@ -11,6 +11,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use std::sync::Arc;
+use necko3_core::chain::BlockchainAdapter;
 
 #[utoipa::path(
     post,
@@ -48,7 +49,10 @@ pub async fn get_chains(
     State(state): State<Arc<AppState>>,
 ) -> Result<(StatusCode, Json<ApiResponse<Vec<ChainConfig>>>), ApiError> {
     let chains = state.db.get_chains().await
-        .map_err(|e| ApiError::BadRequest(e.to_string()))?;
+        .map_err(|e| ApiError::BadRequest(e.to_string()))?
+        .iter().map(|x| x.config().read().unwrap().clone())
+        .collect();
+
     Ok((StatusCode::OK, Json(ApiResponse::success(chains))))
 }
 
@@ -73,7 +77,7 @@ pub async fn get_chain(
         .map_err(|e| ApiError::InternalServerError(e.to_string()))?
         .ok_or_else(|| ApiError::NotFound("Chain not found".into()))?;
 
-    Ok((StatusCode::OK, Json(ApiResponse::success(chain))))
+    Ok((StatusCode::OK, Json(ApiResponse::success(chain.config().read().unwrap().clone()))))
 }
 
 #[utoipa::path(

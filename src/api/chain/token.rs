@@ -1,4 +1,4 @@
-use necko3_core::config::TokenConfig;
+use necko3_core::model::TokenConfig;
 use necko3_core::state::AppState;
 use axum::extract::{Path, State};
 use axum::Json;

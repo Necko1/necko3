@@ -28,7 +28,8 @@ async fn main() -> anyhow::Result<()> {
         let api_key = std::env::var("API_KEY")
             .expect("API_KEY must be set");
 
-        match AppState::init(db, &api_key, Duration::from_secs(30)).await {
+        // todo move intervals to the .env
+        match AppState::init(db, &api_key, Duration::from_secs(30), Duration::from_secs(5)).await {
             Ok(state) => state,
             Err(e) => panic!("Failed to init AppState: {}", e),
         }

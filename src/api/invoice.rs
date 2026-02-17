@@ -1,13 +1,13 @@
-use necko3_core::chain::{Blockchain, BlockchainAdapter};
+use crate::model::{ApiError, ApiResponse, CreateInvoiceReq, Empty};
+use alloy::primitives::{utils::parse_units, U256};
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use axum::Json;
+use necko3_core::chain::BlockchainAdapter;
 use necko3_core::db::DatabaseAdapter;
 use necko3_core::model::{Invoice, InvoiceStatus};
-use crate::model::{ApiResponse, ApiError, CreateInvoiceReq, Empty};
 use necko3_core::state::AppState;
-use alloy::primitives::{U256, utils::parse_units};
-use axum::extract::{Path, State};
-use axum::Json;
 use std::sync::Arc;
-use axum::http::StatusCode;
 
 #[utoipa::path(
     post,
@@ -25,7 +25,7 @@ pub async fn create_invoice(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<CreateInvoiceReq>,
 ) -> Result<(StatusCode, Json<ApiResponse<Invoice>>), ApiError>  {
-    let chain_config = state.db.get_chain(&payload.network).await
+    let blockchain = state.db.get_chain(&payload.network).await
         .map_err(|e| ApiError::InternalServerError(e.to_string()))?
         .ok_or_else(|| ApiError::BadRequest(format!("Network '{}' not supported", payload.network)))?;
 
@@ -40,8 +40,6 @@ pub async fn create_invoice(
     let index = state.get_free_slot(&payload.network).await
         .ok_or_else(|| ApiError::InternalServerError("No free slots available".to_owned()))?;
 
-    let blockchain = Blockchain::new(
-        state.clone(), chain_config.chain_type, &payload.network, None);
     let address = blockchain.derive_address(index).await
         .map_err(|e| ApiError::InternalServerError(format!("Failed to derive address: {}", e)))?;
 
