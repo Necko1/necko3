@@ -1,5 +1,5 @@
 use crate::auth::middleware::RequireAuth;
-use crate::auth::{ApiKeyRecord, FullAccess, Permission};
+use crate::auth::FullAccess;
 use crate::error::ApiError;
 use crate::http::extractor::path::PathArg;
 use crate::models::response::{VecResponse, CreateKeyRes, RevokeKeyRes};
@@ -11,9 +11,27 @@ use axum::Json;
 use chrono::Utc;
 use necko3_core::prelude::db::DatabaseExt;
 use uuid::Uuid;
-use crate::models::ApiKeyPrefix;
+use crate::models::{ApiKeyPrefix, ApiKeyRecord, Permission};
+use crate::openapi::schemas::{ApiKeyRecordSchema, CommonErrors, CreateKeyReqSchema, CreateKeyResSchema, RevokeKeyResSchema, VecResponseSchema};
 
-// post /v1/api-keys
+#[utoipa::path(
+    post,
+    path = "/v1/api-keys",
+    tag = "auth",
+    summary = "Create a new API key",
+    description = "Generates a new API key (publishable or secret) with specific permissions.\n\n**Requires Permission:** `full_access`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    request_body(
+        content = CreateKeyReqSchema,
+        description = "Details for the new API key. Note that `pk_live` keys are strictly limited to `public_read` permission."
+    ),
+    responses(
+        (status = 200, description = "API key created successfully", body = CreateKeyResSchema),
+        CommonErrors
+    )
+)]
 pub async fn create_key<D: DatabaseExt>(
     _auth: RequireAuth<FullAccess>,
     State(state): State<AppState<D>>,
@@ -44,7 +62,20 @@ pub async fn create_key<D: DatabaseExt>(
     Ok((StatusCode::OK, Json(res)))
 }
 
-// get /v1/api-keys
+#[utoipa::path(
+    get,
+    path = "/v1/api-keys",
+    tag = "auth",
+    summary = "List all API keys",
+    description = "Retrieves a list of all generated API keys (metadata only, secrets are never returned).\n\n**Requires Permission:** `full_access`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    responses(
+        (status = 200, description = "List of API keys retrieved successfully", body = VecResponseSchema<ApiKeyRecordSchema>),
+        CommonErrors
+    )
+)]
 pub async fn list_api_keys<D: DatabaseExt>(
     _auth: RequireAuth<FullAccess>,
     State(state): State<AppState<D>>,
@@ -54,7 +85,23 @@ pub async fn list_api_keys<D: DatabaseExt>(
     Ok((StatusCode::OK, Json(keys.into())))
 }
 
-// get /v1/api-keys/:id
+#[utoipa::path(
+    get,
+    path = "/v1/api-keys/{id}",
+    tag = "auth",
+    summary = "Get API key details",
+    description = "Retrieves metadata for a specific API key by its UUID.\n\n**Requires Permission:** `full_access`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = Uuid, Path, description = "The unique identifier (UUID) of the API key record")
+    ),
+    responses(
+        (status = 200, description = "API key metadata retrieved successfully", body = ApiKeyRecordSchema),
+        CommonErrors
+    )
+)]
 pub async fn get_key_record<D: DatabaseExt>(
     _auth: RequireAuth<FullAccess>,
     PathArg(id): PathArg<Uuid>,
@@ -66,7 +113,23 @@ pub async fn get_key_record<D: DatabaseExt>(
     Ok((StatusCode::OK, Json(record)))
 }
 
-// post /v1/api-keys/:id/revoke
+#[utoipa::path(
+    post,
+    path = "/v1/api-keys/{id}/revoke",
+    tag = "auth",
+    summary = "Revoke an API key",
+    description = "Deactivates an API key immediately, preventing any further requests using it. This action cannot be easily reversed via the API.\n\n**Requires Permission:** `full_access`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = Uuid, Path, description = "The unique identifier (UUID) of the API key to revoke")
+    ),
+    responses(
+        (status = 200, description = "API key successfully revoked", body = RevokeKeyResSchema),
+        CommonErrors
+    )
+)]
 pub async fn revoke_key<D: DatabaseExt>(
     _auth: RequireAuth<FullAccess>,
     PathArg(id): PathArg<Uuid>,

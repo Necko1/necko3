@@ -14,8 +14,26 @@ use necko3_core::prelude::db::DatabaseExt;
 use necko3_core::types::core::db::WebhookFilter;
 use necko3_core::types::core::Webhook;
 use uuid::Uuid;
+use crate::openapi::schemas::{CommonErrors, PaginatedVecPageSchema, QueryPaginationParams, QueryWebhookFilterParams, WebhookSchema};
 
-// get /v1/webhooks
+#[utoipa::path(
+    get,
+    path = "/v1/webhooks",
+    tag = "webhooks",
+    summary = "List webhook deliveries",
+    description = "Retrieves a paginated list of webhook delivery logs. Useful for auditing and debugging failed event notifications.\n\n**Requires Permission:** `read_invoices`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        QueryWebhookFilterParams,
+        QueryPaginationParams
+    ),
+    responses(
+        (status = 200, description = "List of webhook logs retrieved successfully", body = PaginatedVecPageSchema<WebhookSchema>),
+        CommonErrors
+    )
+)]
 pub async fn list_webhooks<D: DatabaseExt>(
     _auth: RequireAuth<ReadInvoicesPerm>,
     QueryArg(filter): QueryArg<QueryWebhookFilter>,
@@ -35,7 +53,23 @@ pub async fn list_webhooks<D: DatabaseExt>(
     Ok((StatusCode::OK, Json(webhooks.into())))
 }
 
-// get /v1/webhooks/:id
+#[utoipa::path(
+    get,
+    path = "/v1/webhooks/{id}",
+    tag = "webhooks",
+    summary = "Get webhook delivery details",
+    description = "Retrieves the full payload, status, and retry schedule of a specific webhook delivery event.\n\n**Requires Permission:** `read_invoices`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = Uuid, Path, description = "The unique identifier (UUID) of the webhook delivery log")
+    ),
+    responses(
+        (status = 200, description = "Webhook details retrieved successfully", body = WebhookSchema),
+        CommonErrors
+    )
+)]
 pub async fn get_webhook<D: DatabaseExt>(
     _auth: RequireAuth<ReadInvoicesPerm>,
     PathArg(id): PathArg<Uuid>,

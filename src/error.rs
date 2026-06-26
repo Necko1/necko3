@@ -3,7 +3,7 @@ use axum::Json;
 use axum::response::{IntoResponse, Response};
 use necko3_core::builder::invoice_config::error::InvoiceCreationError;
 use necko3_core::error::UnitConversionError;
-use necko3_core::prelude::db::DbError;
+use necko3_core::prelude::db::{DbError, DbQueryError};
 use crate::db::error::DbError as BackendDbError;
 use serde::Serialize;
 use tracing::error;
@@ -31,6 +31,8 @@ pub enum ApiError {
     NotFound(String),
     BadRequest { message: String, param: String },
     Internal(Box<dyn std::error::Error + Send + Sync>),
+
+    TooManyRequests,
 
     // auth middleware
     ApiKeyMissing,
@@ -72,6 +74,16 @@ impl IntoResponse for ApiError {
                     }
                 )
             },
+            ApiError::TooManyRequests => (
+                StatusCode::TOO_MANY_REQUESTS,
+                ErrorObject {
+                    err_type: "invalid_request_error".to_string(),
+                    code: Some("rate_limit".to_string()),
+                    message: "Too many requests hit the API too quickly. \
+                        We recommend an exponential backoff of your requests.".to_string(),
+                    param: None
+                }
+            ),
             ApiError::ApiKeyMissing => (
                 StatusCode::UNAUTHORIZED,
                 ErrorObject {
@@ -117,7 +129,27 @@ impl IntoResponse for ApiError {
 impl From<DbError> for ApiError {
     fn from(value: DbError) -> Self {
         match value {
-            DbError::Sqlx(e) => ApiError::Internal(e.into()),
+            DbError::Sqlx(error) => {
+                match error {
+                    DbQueryError::ChainAlreadyExists(chain) => ApiError::BadRequest {
+                        message: format!("Chain with name '{chain}' already exists"),
+                        param: "name".to_string(),
+                    },
+                    DbQueryError::TokenSymbolAlreadyExists { symbol, chain } => ApiError::BadRequest {
+                        message: format!("Token with symbol '{symbol}' already exists on chain '{chain}'"),
+                        param: "symbol".to_string(),
+                    },
+                    DbQueryError::TokenContractConflict(contract) => ApiError::BadRequest {
+                        message: format!("Token with contract address '{contract}' already exists"),
+                        param: "contract".to_string(),
+                    },
+                    DbQueryError::InvoiceAddressConflict(address) => ApiError::Internal(
+                        format!("The address generated for the invoice ({address}) conflicts with the database \
+                        (an invoice with this address already exists).").into()
+                    ),
+                    DbQueryError::Driver(e) => ApiError::Internal(e.into())
+                }
+            },
             DbError::Migration(_) => unreachable!(),
             DbError::NotFound { entity, id } =>
                 ApiError::NotFound(format!("{entity} '{id}' not found")),

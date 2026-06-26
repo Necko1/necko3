@@ -32,7 +32,6 @@ pub enum WsEvent {
         new_block_number: u64, new_block_hash: String },
     PaymentFailed { invoice_id: Uuid, payment_id: Uuid, },
     PaymentLost { invoice_id: Uuid, payment_id: Uuid, },
-    PaymentCancelled { invoice_id: Uuid, payment_id: Uuid, },
 
     InvoicePaid { invoice_id: Uuid, },
     InvoiceExpired { invoice_id: Uuid, },
@@ -49,7 +48,6 @@ pub async fn handle_socket<D: DatabaseExt>(mut socket: WebSocket, target_invoice
             WsEvent::PaymentReorged { invoice_id, .. } => (invoice_id, serde_json::to_string(&event)),
             WsEvent::PaymentFailed { invoice_id, .. } => (invoice_id, serde_json::to_string(&event)),
             WsEvent::PaymentLost { invoice_id, .. } => (invoice_id, serde_json::to_string(&event)),
-            WsEvent::PaymentCancelled { invoice_id, .. } => (invoice_id, serde_json::to_string(&event)),
             WsEvent::InvoicePaid { invoice_id, .. } => (invoice_id, serde_json::to_string(&event)),
             WsEvent::InvoiceExpired { invoice_id, .. } => (invoice_id, serde_json::to_string(&event)),
             WsEvent::InvoiceCancelled { invoice_id, .. } => (invoice_id, serde_json::to_string(&event)),

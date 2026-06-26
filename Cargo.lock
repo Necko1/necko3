@@ -3308,7 +3308,7 @@ dependencies = [
 
 [[package]]
 name = "necko3"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3323,6 +3323,7 @@ dependencies = [
  "moka",
  "necko3-core",
  "rand 0.10.1",
+ "reqwest",
  "serde",
  "serde-aux",
  "serde_json",
@@ -3344,7 +3345,7 @@ dependencies = [
 
 [[package]]
 name = "necko3-blockchain"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "alloy",
  "async-trait",
@@ -3360,7 +3361,7 @@ dependencies = [
 
 [[package]]
 name = "necko3-core"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "alloy-primitives",
  "chrono",
@@ -3382,7 +3383,7 @@ dependencies = [
 
 [[package]]
 name = "necko3-database"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "alloy-primitives",
  "arc-swap",
@@ -3401,7 +3402,7 @@ dependencies = [
 
 [[package]]
 name = "necko3-types"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "alloy-primitives",
  "chrono",

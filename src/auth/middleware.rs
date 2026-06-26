@@ -1,6 +1,7 @@
 use crate::auth::error::VerifyKeyError;
 use crate::auth::keystore::KeyStore;
-use crate::auth::{ApiKeyRecord, AuthRequirement, Permission};
+use crate::auth::AuthRequirement;
+use crate::models::{ApiKeyRecord, Permission};
 use crate::error::ApiError;
 use axum::extract::{FromRef, FromRequestParts, Query};
 use axum::http::request::Parts;

@@ -24,7 +24,6 @@ pub struct QueryPaymentFilter {
 #[derive(Default, Clone, Debug, Deserialize, Serialize)]
 pub struct QueryWebhookFilter {
     pub invoice_id: Option<Uuid>,
-    /// WebhookEvent::to_string()
     pub event_type: Option<String>,
     pub url: Option<String>,
     pub status: Option<WebhookStatus>,

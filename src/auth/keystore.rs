@@ -5,7 +5,7 @@ use moka::future::Cache;
 use rand::{rng, Rng};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
-use crate::auth::{ApiKeyRecord, Permission};
+use crate::models::{ApiKeyRecord, Permission};
 use crate::auth::error::VerifyKeyError;
 use crate::db::DatabaseAdapter as BackendDatabaseAdapter;
 use crate::db::error::DbResult as BackendDbResult;
@@ -49,7 +49,7 @@ impl KeyStore {
         let key_id = Uuid::new_v4();
 
         let now = Utc::now();
-        
+
         self.db.insert_key(key_id, name, key_hash, &prefix.to_string(), permissions.clone(), true, now).await?;
 
         let record = ApiKeyRecord {

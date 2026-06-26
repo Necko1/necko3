@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use uuid::Uuid;
-use crate::auth::{ApiKeyRecord, Permission};
+use crate::models::{ApiKeyRecord, Permission};
 use crate::db::DatabaseAdapter;
 use crate::db::error::{DbError, DbResult};
 

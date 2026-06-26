@@ -13,9 +13,27 @@ use crate::http::extractor::query::QueryArg;
 use crate::models::filter::QueryPaymentFilter;
 use crate::models::request::QueryPagination;
 use crate::models::response::PaginatedVecPage;
+use crate::openapi::schemas::{CommonErrors, PaginatedVecPageSchema, PaymentSchema, QueryPaginationParams, QueryPaymentFilterParams};
 use crate::state::AppState;
 
-// get /v1/payments
+#[utoipa::path(
+    get,
+    path = "/v1/payments",
+    tag = "payments",
+    summary = "List all internal payments",
+    description = "Retrieves a paginated list of all internal payment records processed by the system. Can be filtered by addresses, network, token, block details, or status.\n\n**Requires Permission:** `read_invoices`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        QueryPaymentFilterParams,
+        QueryPaginationParams
+    ),
+    responses(
+        (status = 200, description = "List of payments retrieved successfully", body = PaginatedVecPageSchema<PaymentSchema>),
+        CommonErrors
+    )
+)]
 pub async fn list_payments<D: DatabaseExt>(
     _auth: RequireAuth<ReadInvoicesPerm>,
     QueryArg(filter): QueryArg<QueryPaymentFilter>,
@@ -32,13 +50,29 @@ pub async fn list_payments<D: DatabaseExt>(
         status: filter.status,
         pagination: pagination.into(),
     };
-    
+
     let payments = state.core.db().get_payments(filter).await?;
 
     Ok((StatusCode::OK, Json(payments.into())))
 }
 
-// get /v1/payments/:id
+#[utoipa::path(
+    get,
+    path = "/v1/payments/{id}",
+    tag = "payments",
+    summary = "Get payment details",
+    description = "Retrieves detailed information about a specific payment transaction by its internal UUID.\n\n**Requires Permission:** `read_invoices`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = Uuid, Path, description = "The unique identifier (UUID) of the payment")
+    ),
+    responses(
+        (status = 200, description = "Payment details retrieved successfully", body = PaymentSchema),
+        CommonErrors
+    )
+)]
 pub async fn get_payment<D: DatabaseExt>(
     _auth: RequireAuth<ReadInvoicesPerm>,
     PathArg(id): PathArg<Uuid>,

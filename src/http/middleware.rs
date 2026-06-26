@@ -1,9 +1,12 @@
 pub mod key_extractor;
 pub mod cors;
 
+use axum::response::{IntoResponse, Response};
 use governor::middleware::StateInformationMiddleware;
 use tower_governor::governor::{GovernorConfig, GovernorConfigBuilder};
+use tower_governor::GovernorError;
 use tower_governor::key_extractor::KeyExtractor;
+use crate::error::ApiError;
 use crate::http::middleware::key_extractor::ApiKeyExtractor;
 
 pub fn get_governor_conf<K: KeyExtractor>(
@@ -30,3 +33,18 @@ pub fn get_api_key_governor_conf(
     get_governor_conf(replenish_interval_millis, burst_size, ApiKeyExtractor)
 }
 
+pub fn handle_governor_error(
+    error: GovernorError
+) -> Response {
+    match error {
+        GovernorError::UnableToExtractKey => {
+            ApiError::ApiKeyMissing.into_response()
+        }
+        GovernorError::TooManyRequests { .. } => {
+            ApiError::TooManyRequests.into_response()
+        }
+        other => {
+            other.into_response().map(axum::body::Body::from)
+        }
+    }
+}

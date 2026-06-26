@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 use crate::db::error::DbResult;
-use crate::auth::{ApiKeyRecord, Permission};
+use crate::models::{ApiKeyRecord, Permission};
 
 pub mod backends;
 pub mod error;

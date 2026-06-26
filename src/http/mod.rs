@@ -5,7 +5,9 @@ use tower_governor::GovernorLayer;
 use tower_governor::key_extractor::KeyExtractor;
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
-use crate::http::middleware::{get_api_key_governor_conf, get_governor_conf};
+use utoipa::OpenApi;
+use utoipa_swagger_ui::SwaggerUi;
+use crate::http::middleware::{get_api_key_governor_conf, get_governor_conf, handle_governor_error};
 use crate::state::AppState;
 
 pub mod middleware;
@@ -14,6 +16,7 @@ pub mod v1;
 pub mod extractor;
 
 use v1::*;
+use crate::openapi::ApiDoc;
 
 pub struct PublicRateLimitConf<K: KeyExtractor> {
     pub replenish_interval_millis: u64,
@@ -31,24 +34,29 @@ pub fn build_router<D, K>(
     pub_rlc: PublicRateLimitConf<K>,
     priv_rlc: PrivateRateLimitConf,
     cors_layer: CorsLayer,
+    include_swagger: bool,
 ) -> Router
 where
     D: DatabaseExt + 'static,
     K: KeyExtractor + Send + Sync + 'static,
     <K as KeyExtractor>::Key: Send + Sync,
 {
-    let pub_governor = get_governor_conf(
-        pub_rlc.replenish_interval_millis, pub_rlc.burst_size, pub_rlc.key_extractor);
+    let pub_governor = GovernorLayer::new(
+        get_governor_conf(pub_rlc.replenish_interval_millis, pub_rlc.burst_size, pub_rlc.key_extractor)
+    ).error_handler(handle_governor_error);
 
-    let priv_governor = get_api_key_governor_conf(
-        priv_rlc.replenish_interval_millis, priv_rlc.burst_size);
+    let priv_governor = GovernorLayer::new(
+        get_api_key_governor_conf(priv_rlc.replenish_interval_millis, priv_rlc.burst_size)
+    ).error_handler(handle_governor_error);
 
     let public_routes = Router::new()
         .route("/checkout/invoice/{id}", get(checkout::get_checkout_invoice))
         .route("/checkout/invoice/{id}/ws", get(checkout::invoice_ws_handler))
         .route("/checkout/invoice/{id}/payments", get(checkout::get_checkout_invoice_payments))
 
-        .layer(GovernorLayer::new(pub_governor));
+        .route("/proxy/image", get(external::image_proxy))
+
+        .layer(pub_governor);
 
     let private_routes = Router::new()
         .route("/api-keys", post(api_keys::create_key)
@@ -78,16 +86,24 @@ where
         .route("/webhooks", get(webhooks::list_webhooks))
         .route("/webhooks/{id}", get(webhooks::get_webhook))
 
-        .layer(GovernorLayer::new(priv_governor));
+        .layer(priv_governor);
 
     let v1_routes = public_routes.merge(private_routes);
 
-    Router::new()
+    let mut router = Router::new()
         .nest("/v1", v1_routes)
 
         .with_state(state)
         .layer(cors_layer)
         .layer(TraceLayer::new_for_http())
 
-        .route("/health", get(|| async { "ok" }))
+        .route("/health", get(|| async { "ok" }));
+
+    if include_swagger {
+        tracing::info!("Swagger UI enabled at /swagger-ui");
+        router = router.merge(SwaggerUi::new("/swagger-ui")
+            .url("/api-docs/openapi.json", ApiDoc::openapi()));
+    }
+
+    router
 }

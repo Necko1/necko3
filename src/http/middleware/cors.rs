@@ -19,7 +19,7 @@ pub fn cors_from_str(raw_str: &str) -> CorsLayer {
 
     CorsLayer::new()
         .allow_origin(origin)
-        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::PUT, Method::DELETE])
+        .allow_methods([Method::GET, Method::POST, Method::PATCH, Method::DELETE])
         .allow_headers([
             header::CONTENT_TYPE,
             header::ACCEPT,

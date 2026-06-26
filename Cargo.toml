@@ -1,6 +1,6 @@
 [package]
 name = "necko3"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 
 [profile.release]
@@ -54,5 +54,6 @@ serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.20", features = ["v4"] }
 
-utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+reqwest = "0.13.4"

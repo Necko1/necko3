@@ -32,6 +32,7 @@ pub struct AppConfig {
 pub struct ServerConfig {
     pub bind_address: SocketAddr,
     pub cors_allowed_origins: String,
+    pub include_swagger: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -73,6 +74,7 @@ impl AppConfig {
         let server = ServerConfig {
             bind_address: Self::get_env_parsed("BIND_ADDRESS")?,
             cors_allowed_origins: Self::get_env("CORS_ALLOWED_ORIGINS")?,
+            include_swagger: Self::get_env_parsed_or("INCLUDE_SWAGGER", false)?,
         };
 
         let database = DatabaseConfig {

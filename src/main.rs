@@ -1,3 +1,4 @@
+use std::net::SocketAddr;
 use std::time::Duration;
 use necko3_core::builder::webhook_config::WebhookDispatcherConfig;
 use necko3_core::core::NeckoCore;
@@ -11,7 +12,7 @@ use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
-use crate::auth::Permission;
+use crate::models::Permission;
 use crate::config::{AppConfig, DatabaseType, RateLimitStrategy};
 use crate::db::backends::in_memory::InMemoryAdapter as BackendInMemoryAdapter;
 use crate::db::backends::postgres::PostgresAdapter as BackendPostgresAdapter;
@@ -28,6 +29,7 @@ pub mod auth;
 pub mod http;
 pub mod models;
 pub mod db;
+pub mod openapi;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -127,7 +129,12 @@ where
         burst_size: config.rate_limits.private_burst_size,
     };
 
-    let app = build_router(state, pub_rlc, priv_rlc, cors_layer);
+    let app = build_router(
+        state,
+        pub_rlc, priv_rlc,
+        cors_layer,
+        config.server.include_swagger
+    );
 
     info!("Starting HTTP server on {}", config.server.bind_address);
     let listener = TcpListener::bind(&config.server.bind_address).await
@@ -136,7 +143,10 @@ where
             e
         })?;
 
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>()
+    ).await?;
 
     Ok(())
 }

@@ -4,7 +4,7 @@ use sqlx::PgPool;
 use sqlx::postgres::PgPoolOptions;
 use sqlx::types::Json;
 use uuid::Uuid;
-use crate::auth::{ApiKeyRecord, Permission};
+use crate::models::{ApiKeyRecord, Permission};
 use crate::db::DatabaseAdapter;
 use crate::db::error::{DbError, DbResult};
 

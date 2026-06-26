@@ -1,8 +1,12 @@
+use std::collections::HashSet;
+use necko3_core::builder::chain_config::ChainConfig;
 use necko3_core::builder::invoice_config::WebhookConfig;
+use necko3_core::builder::token_config::TokenConfig;
+use necko3_core::types::core::ChainType;
 use necko3_core::types::core::db::Pagination;
 use serde_aux::prelude::deserialize_number_from_string;
 use serde::{Deserialize, Serialize};
-use crate::auth::Permission;
+use crate::models::Permission;
 use crate::models::ApiKeyPrefix;
 
 #[derive(Debug, Copy, Clone, Serialize, Deserialize)]
@@ -59,5 +63,50 @@ pub struct CreateInvoiceReq {
 }
 
 fn default_duration() -> u64 {
-    900
+    3600
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateChainReq {
+    pub name: String,
+    pub active: bool,
+    pub rpc_urls: Vec<String>,
+    pub chain_type: ChainType,
+    pub xpub: String,
+    pub native_symbol: String,
+    pub decimals: u8,
+    pub last_processed_block: u64,
+    pub block_lag: u8,
+    pub safe_lag: u8,
+    pub required_confirmations: u64,
+    pub logo_url: Option<String>,
+
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub tokens: Vec<TokenConfig>,
+}
+
+impl From<CreateChainReq> for ChainConfig {
+    fn from(value: CreateChainReq) -> Self {
+        Self {
+            name: value.name,
+            active: value.active,
+            rpc_urls: value.rpc_urls,
+            chain_type: value.chain_type,
+            xpub: value.xpub,
+            native_symbol: value.native_symbol,
+            decimals: value.decimals,
+            last_processed_block: value.last_processed_block,
+            block_lag: value.block_lag,
+            safe_lag: value.safe_lag,
+            required_confirmations: value.required_confirmations,
+            logo_url: value.logo_url,
+            watch_addresses: HashSet::new(),
+            tokens: value.tokens,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ImageProxyParams {
+    pub url: String,
 }

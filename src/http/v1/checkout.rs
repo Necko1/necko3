@@ -14,9 +14,26 @@ use crate::http::ws::handle_socket;
 use crate::models::request::QueryPagination;
 use crate::models::public::{PublicInvoiceModel, PublicPaymentModel};
 use crate::models::response::PaginatedVecPage;
+use crate::openapi::schemas::{CommonErrors, PaginatedVecPageSchema, PublicInvoiceModelSchema, PublicPaymentModelSchema, QueryPaginationParams};
 use crate::state::AppState;
 
-// get /v1/checkout/invoice/:id/ws
+#[utoipa::path(
+    get,
+    path = "/v1/checkout/invoice/{id}/ws",
+    tag = "checkout",
+    summary = "Subscribe to invoice updates (WebSocket)",
+    description = "Establishes a WebSocket connection to receive real-time updates about the specified invoice's status and incoming payments.\n\n**Requires Permission:** `public_read`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = Uuid, Path, description = "The unique identifier (UUID) of the invoice")
+    ),
+    responses(
+        (status = 101, description = "WebSocket protocol successfully upgraded"),
+        CommonErrors
+    )
+)]
 pub async fn invoice_ws_handler<D: DatabaseExt + 'static>(
     _auth: RequireAuth<PublicReadPerm>,
 
@@ -28,7 +45,23 @@ pub async fn invoice_ws_handler<D: DatabaseExt + 'static>(
     ws.on_upgrade(move |socket| handle_socket(socket, id, state))
 }
 
-// get /v1/checkout/invoice/:id
+#[utoipa::path(
+    get,
+    path = "/v1/checkout/invoice/{id}",
+    tag = "checkout",
+    summary = "Get public invoice details",
+    description = "Retrieves public, safe-to-display details of an invoice for the checkout page.\n\n**Requires Permission:** `public_read`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = Uuid, Path, description = "The unique identifier (UUID) of the invoice")
+    ),
+    responses(
+        (status = 200, description = "Public invoice details retrieved successfully", body = PublicInvoiceModelSchema),
+        CommonErrors
+    )
+)]
 pub async fn get_checkout_invoice<D: DatabaseExt>(
     _auth: RequireAuth<PublicReadPerm>,
     PathArg(id): PathArg<Uuid>,
@@ -42,7 +75,24 @@ pub async fn get_checkout_invoice<D: DatabaseExt>(
     Ok((StatusCode::OK, Json(pub_invoice)))
 }
 
-// get /v1/checkout/invoice/:id/payments
+#[utoipa::path(
+    get,
+    path = "/v1/checkout/invoice/{id}/payments",
+    tag = "checkout",
+    summary = "List payments for an invoice",
+    description = "Retrieves a paginated list of all payments (pending, confirming, and confirmed) directed to a specific invoice's address.\n\n**Requires Permission:** `public_read`",
+    security(
+        ("bearer_auth" = [])
+    ),
+    params(
+        ("id" = Uuid, Path, description = "The unique identifier (UUID) of the invoice"),
+        QueryPaginationParams
+    ),
+    responses(
+        (status = 200, description = "List of payments retrieved successfully", body = PaginatedVecPageSchema<PublicPaymentModelSchema>),
+        CommonErrors
+    )
+)]
 pub async fn get_checkout_invoice_payments<D: DatabaseExt>(
     _auth: RequireAuth<PublicReadPerm>,
     PathArg(id): PathArg<Uuid>,

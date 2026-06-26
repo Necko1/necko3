@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use necko3_core::types::core::db::PaginatedVec;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use crate::auth::ApiKeyRecord;
+use crate::models::ApiKeyRecord;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedVecPage<T: Serialize> {
