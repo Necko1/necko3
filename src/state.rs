@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use axum::extract::FromRef;
 use necko3_core::core::NeckoCore;
-use necko3_core::prelude::db::DatabaseExt;
+use necko3_core::prelude::db::traits::DatabaseExt;
 use necko3_core::types::NeckoEvent;
 use tokio::sync::broadcast;
 use crate::auth::keystore::KeyStore;

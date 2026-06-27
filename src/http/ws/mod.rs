@@ -1,5 +1,5 @@
 use axum::extract::ws::{Message, WebSocket};
-use necko3_core::prelude::db::DatabaseExt;
+use necko3_core::prelude::db::traits::DatabaseExt;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 use uuid::Uuid;

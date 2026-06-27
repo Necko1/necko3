@@ -11,8 +11,7 @@ panic = "abort"
 strip = "debuginfo"
 
 [dependencies]
-#necko3-core = { git = "https://github.com/necko-moe/necko3-core.git", branch = "dev" }
-necko3-core = { path = "../necko3-core/necko3-core" }
+necko3-core = "0.2"
 
 tokio = { version = "1", features = ["full"] }
 

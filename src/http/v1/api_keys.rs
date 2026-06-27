@@ -9,7 +9,7 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
 use chrono::Utc;
-use necko3_core::prelude::db::DatabaseExt;
+use necko3_core::prelude::db::traits::DatabaseExt;
 use uuid::Uuid;
 use crate::models::{ApiKeyPrefix, ApiKeyRecord, Permission};
 use crate::openapi::schemas::{ApiKeyRecordSchema, CommonErrors, CreateKeyReqSchema, CreateKeyResSchema, RevokeKeyResSchema, VecResponseSchema};

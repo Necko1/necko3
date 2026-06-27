@@ -3,7 +3,7 @@ use std::time::Duration;
 use necko3_core::builder::webhook_config::WebhookDispatcherConfig;
 use necko3_core::core::NeckoCore;
 use necko3_core::prelude::db::backends::{InMemoryAdapter, PostgresAdapter};
-use necko3_core::prelude::db::{DatabaseAdapter, DatabaseExt};
+use necko3_core::prelude::db::traits::{DatabaseAdapter, DatabaseExt};
 use necko3_core::prelude::db::notifying::NotifyingDb;
 use necko3_core::types::NeckoEvent;
 use tokio::net::TcpListener;
@@ -96,7 +96,7 @@ where
             vec![Permission::FullAccess]
         ).await?;
 
-        info!(raw_key, "New admin key created!");
+        println!("New admin key created!: '{}'. Keep it secure.", raw_key);
     }
 
     match config.rate_limits.public_strategy {

@@ -1,6 +1,6 @@
 use axum::Router;
 use axum::routing::{get, post};
-use necko3_core::prelude::db::DatabaseExt;
+use necko3_core::prelude::db::traits::DatabaseExt;
 use tower_governor::GovernorLayer;
 use tower_governor::key_extractor::KeyExtractor;
 use tower_http::cors::CorsLayer;

@@ -2,7 +2,7 @@ use axum::extract::{State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::Json;
 use axum::response::Response;
-use necko3_core::prelude::db::DatabaseExt;
+use necko3_core::prelude::db::traits::DatabaseExt;
 use necko3_core::types::core::db::{PaginatedVec, PaymentFilter};
 use uuid::Uuid;
 use crate::auth::middleware::RequireAuth;

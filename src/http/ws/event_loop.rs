@@ -1,4 +1,4 @@
-use necko3_core::prelude::db::DatabaseExt;
+use necko3_core::prelude::db::traits::DatabaseExt;
 use necko3_core::types::{CoreEvent, ExternalEvent, NeckoEvent};
 use necko3_core::types::core::{Invoice, Payment};
 use tracing::{debug, error, info};

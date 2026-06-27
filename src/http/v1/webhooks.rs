@@ -10,7 +10,7 @@ use crate::state::AppState;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::Json;
-use necko3_core::prelude::db::DatabaseExt;
+use necko3_core::prelude::db::traits::DatabaseExt;
 use necko3_core::types::core::db::WebhookFilter;
 use necko3_core::types::core::Webhook;
 use uuid::Uuid;
