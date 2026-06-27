@@ -1,6 +1,6 @@
 [package]
 name = "necko3"
-version = "0.1.9"
+version = "0.2.1"
 edition = "2024"
 
 [profile.release]
@@ -11,21 +11,48 @@ panic = "abort"
 strip = "debuginfo"
 
 [dependencies]
-necko3-core = { git = "https://github.com/necko-moe/necko3-core.git" }
+necko3-core = "0.2"
+
+tokio = { version = "1", features = ["full"] }
+
+sqlx = { version = "0.9", features = [
+    "runtime-tokio", "tls-rustls", "postgres", "uuid", "chrono", "json"] }
+
+anyhow = "1"
+thiserror = "2"
+
+async-trait = "0.1"
+
+moka = { version = "0.12", features = ["future"] }
+rand = "0.10"
+sha2 = "0.11"
+base-62 = "0.1"
+hex = "0.4"
+
+strum = { version = "0.28", features = ["derive"] }
+
+serde_json = "1"
+serde_urlencoded = "0.7"
+form_urlencoded = "1.2"
+serde_path_to_error = "0.1"
+
+tower_governor = "0.8"
+governor = "0.10"
+
+dashmap = "6.2"
 
 dotenvy = "0.15"
-tokio = { version = "1.49", features = ["full"] }
-anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
-axum = { version = "0.8", features = ["macros"] }
-tower-http = { version = "0.6", features = ["cors", "trace", "compression-full"] }
+axum = { version = "0.8", features = ["macros", "ws"] }
+tower-http = { version = "0.7", features = ["cors", "trace", "compression-full"] }
 serde-aux = "4.7"
 
 serde = { version = "1", features = ["derive"] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1.20", features = ["v4"] }
 
-utoipa = { version = "5.4", features = ["axum_extras", "chrono", "uuid"] }
+utoipa = { version = "5.5", features = ["axum_extras", "chrono", "uuid"] }
 utoipa-swagger-ui = { version = "9.0", features = ["axum"] }
+reqwest = "0.13.4"

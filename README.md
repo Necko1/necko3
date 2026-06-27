@@ -4,15 +4,24 @@
   </a>
   <h1>necko3-backend</h1>
 
-  <a href="https://github.com/necko-moe/necko3-backend/stargazers">
-    <img src="https://img.shields.io/github/stars/necko-moe/necko3-backend?style=social" alt="GitHub stars">
-  </a>
+  <p align="center">
+    <a href="https://github.com/necko-moe/necko3-backend/actions">
+      <img src="https://img.shields.io/github/actions/workflow/status/necko-moe/necko3-backend/ci.yml?branch=main&style=flat-square" alt="CI Status">
+    </a>
+    <a href="https://opensource.org/licenses/MIT">
+      <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square" alt="License: MIT">
+    </a>
+    <img src="https://img.shields.io/badge/rustc-1.94.1+-ab6000.svg?style=flat-square&logo=rust" alt="MSRV">
+    <a href="https://github.com/necko-moe/necko3-backend/stargazers">
+       <img src="https://img.shields.io/github/stars/necko-moe/necko3-backend?style=social" alt="GitHub stars">
+     </a>
+  </p>
 </div>
 
 ***
 
 ## About
-**necko3-backend** is a module of the necko3 project, representing a high-performance **Axum** web server. It also serves as a reference implementation of `necko3-core`, demonstrating full integration.
+**necko3-backend** is a module of the necko3 project, representing a high-performance **Axum** web server. It also serves as a reference implementation of `necko3-core` v0.2.x, demonstrating full integration, including WebSocket event streaming.
 
 <div align="center">
   <img src=".github/static/app-necko3-rss.png" alt="only 10896 KB of usage">
@@ -21,13 +30,18 @@
 
 ### Features
 - Always up-to-date Swagger UI, which can be disabled for production _(disabling it has zero impact on memory usage)_.
-- Authorization via `X-API-Key` header.
-- Public invoice endpoints not requiring an API key.
-- Lightweight, incredibly fast, asynchronous architecture.
+- Standardized JSON payloads, unified error responses (`ApiError`), and HTTP statuses across all grouped `/v1` endpoints.
+- Strict permission-driven authorization via standard `Authorization` header with `sk_live_` and `pk_live_` prefixed API keys.
+    - Automatic full-access admin key generation on initial startup.
+- WebSocket checkout endpoint for instant invoice updates.
+- Built-in rate limiting (IP-based for public routes and API-key-based for private routes).
+- Public-domain image proxy (`/v1/proxy/image`) to easily bypass CORS restrictions.
+- Lightweight, incredibly fast, asynchronous, high-performance etc. architecture.
 - Configurable log output format (compact/full or json for production).
-- Production-ready `docker-compose.yml` with healthchecks included.
+- Production-ready `docker-compose.yml` files with healthchecks included.
+    - Out-of-the-box automatic database migrations on startup.
 
-I also highly recommend checking out the key features of the `necko3-core` module, as this repo only touches the surface — the real magic happens there.
+I also highly recommend checking out the key features of the `necko3-core` crate, as this repo only scratches the surface — the real magic happens there.
 
 ## Installing and Launching
 
@@ -60,11 +74,8 @@ First, copy the `.env` file:
 curl -o .env https://raw.githubusercontent.com/necko-moe/necko3-backend/refs/heads/main/.env.example
 ```
 
-Next, generate an `API_KEY` (non-negotiable, you need this) and a decent password for Postgres (if your DB is already set up, fill in the connection details yourself).
+Next, generate a decent password for Postgres (if your DB is already set up, fill in the connection details yourself). *Note: The full-access admin API key will be automatically generated and logged on the initial startup!*
 ```bash
-# Generate API_KEY
-sed -i "s/^API_KEY=.*/API_KEY=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 64; echo)/" .env
-
 # Generate DATABASE_PASSWORD and update DATABASE_URL
 pass=$(tr -dc A-Za-z0-9 </dev/urandom | head -c 24; echo) && \
   sed -i "s/^DATABASE_PASSWORD=.*/DATABASE_PASSWORD=$pass/" .env && \
@@ -103,7 +114,7 @@ Next, download the binary from Releases for your architecture, place it next to 
 mkdir /opt/necko3 && cd /opt/necko3
 
 # Replace x86_64 with aarch64 if you are on ARM64
-wget -o necko3 https://github.com/necko-moe/necko3-backend/releases/latest/download/necko3-linux-x86_64
+wget -O necko3 https://github.com/necko-moe/necko3-backend/releases/latest/download/necko3-linux-x86_64
 
 # Create a separate tmux session so the binary keeps spinning regardless of your SSH connection
 # https://tmuxcheatsheet.com/ 
@@ -129,7 +140,7 @@ The backend will be available on port `3000` (you can change `BIND_ADDRESS` in `
 mkdir /opt/necko3 && cd /opt/necko3
 
 # Replace x86_64 with aarch64 if you are on ARM64
-wget -o necko3 https://github.com/necko-moe/necko3-backend/releases/latest/download/necko3-linux-x86_64
+wget -O necko3 https://github.com/necko-moe/necko3-backend/releases/latest/download/necko3-linux-x86_64
 
 # Create a separate tmux session so the binary keeps spinning regardless of your SSH connection
 # https://tmuxcheatsheet.com/ 
@@ -138,13 +149,19 @@ tmux new-session -A -s necko3
 chmod +x necko3 && ./necko3
 ```
 
-The backend will be available on port `3000` (you can change `BIND_ADDRESS` in `.env`).
+The backend will be available on port `3000` (or your configured `BIND_ADDRESS`).<br />
+Upon initial startup, check the console logs — the server will print your **auto-generated Admin API key** required for authorization.
+
+You can explore the documentation and interact with the API via Swagger UI at the `/swagger-ui` route.<br />
+Don't want to install it yet? Check out the **[Live Demo](https://api.necko.moe/swagger-ui)**.<br />
+*P.S. The live demo is running in read-only mode for security reasons.*
 
 ## Contributing
 
 I'd be happy to see any feedback.<br />
 Found a bug? <a href=https://github.com/necko-moe/necko3-backend/issues/new>Open an Issue</a>.<br />
-Want to add a feature? Fork it and send a PR.
+Want to add a feature? Fork it and send a PR 
+(or just <a href=https://github.com/necko-moe/necko3-backend/issues/new>Open an Issue</a> and write whatever you want)
 
 ## License
 
@@ -154,7 +171,13 @@ The project and all repositories are distributed under the **MIT License**. Feel
 
 <div align="center">
   <h1>SUPPORT PROJECT</h1>
-  <p>Want to make necko1 employed or donate enough for a Triple Whopper? Contact me -> <a href=https://t.me/everyonehio>Telegram</a> or <a href="mailto:meow@necko.moe">Mail me</a> (I rarely check that). I don't accept direct card transfers, just so you know</p>
+  <p>Want to make necko1 employed or donate enough for a Triple Whopper? Contact me -> <a href=https://t.me/everyonehio>Telegram</a> or <a href="mailto:meow@necko.moe">Mail me</a> (I rarely check that)</p>
+  <p>I don't accept direct card transfers, but you can feed me some stablecoins:</p>
+    <ul style="list-style-type: none; padding: 0;">
+      <li><b>USDT (TRC20):</b> <code>THcVNoNu3oaLfssbWbNxXK5rUsLfpPM35D</code></li>
+      <li><b>Anything in Ethereum / ERC-20:</b> <code>0x97D596eA81C09aC76a89D495b7bACa7660eb4c73</code></li>
+      <li><b>TON:</b> <code>UQDRX9xv1uMxUMe9kkeidWGDkORI4gDx076QIaejtQUjI</code></li>
+    </ul>
   <p>
     Broke but still want to help?
     You can just <a href="https://github.com/necko-moe/necko3-backend/stargazers"><b>⭐ Star this repo</b></a> to show your love. It really helps!
