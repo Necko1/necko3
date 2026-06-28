@@ -1,6 +1,6 @@
 [package]
 name = "necko3"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 
 [profile.release]
@@ -11,7 +11,7 @@ panic = "abort"
 strip = "debuginfo"
 
 [dependencies]
-necko3-core = "0.2"
+necko3-core = { git = "https://github.com/necko-moe/necko3-core.git", branch = "dev" }
 
 tokio = { version = "1", features = ["full"] }
 

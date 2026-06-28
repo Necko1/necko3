@@ -3308,7 +3308,7 @@ dependencies = [
 
 [[package]]
 name = "necko3"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -3345,9 +3345,8 @@ dependencies = [
 
 [[package]]
 name = "necko3-blockchain"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3aae7eebed7c141c2e4f9183b2b931104f99aa7f7f665d5f381369f3a03f554a"
+version = "0.2.4"
+source = "git+https://github.com/necko-moe/necko3-core.git?branch=dev#7c88b6cacf2f50b0eef1d4da55b1a2db0a763d7f"
 dependencies = [
  "alloy",
  "async-trait",
@@ -3363,9 +3362,8 @@ dependencies = [
 
 [[package]]
 name = "necko3-core"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e27293633cd4291f117445b48512a8a1e55d570bdd8dae5f69eaa6a5c3244f40"
+version = "0.2.4"
+source = "git+https://github.com/necko-moe/necko3-core.git?branch=dev#7c88b6cacf2f50b0eef1d4da55b1a2db0a763d7f"
 dependencies = [
  "alloy-primitives",
  "chrono",
@@ -3387,9 +3385,8 @@ dependencies = [
 
 [[package]]
 name = "necko3-database"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43dec596249894b3fa08bc63b303fa86cc3b15364ca5fbe8e01d7386341e5e81"
+version = "0.2.4"
+source = "git+https://github.com/necko-moe/necko3-core.git?branch=dev#7c88b6cacf2f50b0eef1d4da55b1a2db0a763d7f"
 dependencies = [
  "alloy-primitives",
  "arc-swap",
@@ -3408,9 +3405,8 @@ dependencies = [
 
 [[package]]
 name = "necko3-types"
-version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9eeced9adaa592ec2e62190f771dcb7a6d71923a68f995486740148879ed0a06"
+version = "0.2.4"
+source = "git+https://github.com/necko-moe/necko3-core.git?branch=dev#7c88b6cacf2f50b0eef1d4da55b1a2db0a763d7f"
 dependencies = [
  "alloy-primitives",
  "chrono",
