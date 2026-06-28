@@ -1,4 +1,3 @@
-use serde::{Serialize};
 use crate::models::Permission;
 
 pub mod middleware;

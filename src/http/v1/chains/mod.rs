@@ -121,7 +121,7 @@ pub async fn update_chain<D: DatabaseExt>(
     State(state): State<AppState<D>>,
     JsonArg(payload): JsonArg<PartialChainUpdate>,
 ) -> Result<(StatusCode, Json<ChainData>), ApiError> {
-    state.core.db().update_chain_partial(&name, &payload).await?;
+    state.core.db().update_chain_partial(&name, payload).await?;
 
     let chain_data = state.core.db().get_chain(&name).await?
         .ok_or(ApiError::NotFound(format!("Chain '{name}' not found")))?;

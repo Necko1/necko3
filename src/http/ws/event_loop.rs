@@ -138,7 +138,7 @@ impl<D: DatabaseExt> EventForwarder<D> {
 
     async fn get_payment_by_tx_hash(&self, tx_hash: String) -> Option<Payment> {
         let payment_opt = self.state.core.db()
-            .get_payment_by_tx_hash(tx_hash.clone()).await
+            .get_payment_by_tx_hash(&tx_hash).await
             .unwrap_or_else(|e| {
                 error!("DB error while getting payment for tx_hash {}: {}", tx_hash, e);
                 None
